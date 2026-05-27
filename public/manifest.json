@@ -1,0 +1,26 @@
+{
+  "name": "OpenMAIC Player - AI 交互式课堂",
+  "short_name": "OpenMAIC",
+  "description": "AI 多智能体交互式学习平台移动端应用",
+  "start_url": "/mobile",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2563eb",
+  "orientation": "any",
+  "categories": ["education", "productivity"],
+  "lang": "zh-CN",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

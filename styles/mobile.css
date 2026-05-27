@@ -1,0 +1,115 @@
+/* 移动端专用样式 */
+
+.mobile-layout {
+  /* 防止双击缩放 */
+  touch-action: manipulation;
+  
+  /* 优化滚动 */
+  -webkit-overflow-scrolling: touch;
+  
+  /* 禁用文本选择（可选） */
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* 允许输入框和文本域的文本选择 */
+.mobile-layout input,
+.mobile-layout textarea {
+  -webkit-user-select: auto;
+  user-select: auto;
+}
+
+/* 增大触摸目标 */
+.mobile-layout button,
+.mobile-layout a,
+.mobile-layout [role="button"],
+.mobile-layout .clickable {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* 优化按钮点击效果 */
+.mobile-layout button:active,
+.mobile-layout .clickable:active {
+  opacity: 0.7;
+  transform: scale(0.98);
+}
+
+/* 隐藏桌面端元素 */
+.desktop-only {
+  display: none !important;
+}
+
+/* 显示移动端专属元素 */
+.mobile-only {
+  display: block;
+}
+
+/* 幻灯片容器适配 */
+.mobile-layout .slide-container {
+  padding: 12px;
+  max-width: 100%;
+}
+
+.mobile-layout .slide-content {
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+/* 聊天面板折叠样式 */
+.collapsible-chat {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  max-height: 50vh;
+  transform: translateY(calc(100% - 60px));
+  transition: transform 0.3s ease;
+  z-index: 50;
+}
+
+.collapsible-chat.expanded {
+  transform: translateY(0);
+}
+
+/* 课程卡片优化 */
+.classroom-card {
+  transition: all 0.2s ease;
+}
+
+.classroom-card:active {
+  transform: scale(0.98);
+}
+
+/* 加载动画优化 */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* 文本截断 */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* 安全区域适配（iPhone X+） */
+.safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* 状态栏高度补偿 */
+.status-bar-compensation {
+  height: env(safe-area-inset-top);
+}

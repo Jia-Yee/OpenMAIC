@@ -15,6 +15,8 @@ import {
   Repeat,
   Maximize2,
   Minimize2,
+  Edit3,
+  MonitorPlay,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useStageStore } from '@/lib/store';
@@ -50,6 +52,9 @@ export interface CanvasToolbarProps {
   readonly onToggleAutoPlay?: () => void;
   readonly playbackSpeed?: number;
   readonly onCycleSpeed?: () => void;
+  // Mode toggle
+  readonly mode?: 'playback' | 'autonomous';
+  readonly onToggleMode?: () => void;
 }
 
 /* Compact control button */
@@ -108,6 +113,8 @@ export function CanvasToolbar({
   onToggleAutoPlay,
   playbackSpeed = 1,
   onCycleSpeed,
+  mode = 'playback',
+  onToggleMode,
 }: CanvasToolbarProps) {
   const { t } = useI18n();
   const canGoPrev = currentSceneIndex > 0;
@@ -138,6 +145,12 @@ export function CanvasToolbar({
   // Effective volume for display
   const effectiveVolume = ttsMuted ? 0 : ttsVolume;
   const presentationLabel = isPresenting ? t('stage.exitFullscreen') : t('stage.fullscreen');
+  
+  // Mode toggle labels
+  const modeLabel = mode === 'autonomous' ? t('toolbar.editMode') : t('toolbar.playbackMode');
+  const modeTooltip = mode === 'autonomous' 
+    ? t('toolbar.switchToPlayback') 
+    : t('toolbar.switchToEdit');
 
   return (
     <div className={cn('flex items-center gap-2', className)}>
@@ -399,6 +412,38 @@ export function CanvasToolbar({
       {/* ── Right: fullscreen + chat toggle ── */}
       <div className="flex items-center justify-end gap-px shrink-0 pr-1">
         <CtrlDivider />
+        
+        {/* Mode Toggle Button */}
+        {onToggleMode && (
+          <TooltipProvider delayDuration={0}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={onToggleMode}
+                  className={cn(
+                    ctrlBtn,
+                    'w-6 h-6',
+                    mode === 'autonomous'
+                      ? 'text-blue-600 dark:text-blue-400 bg-blue-500/10 dark:bg-blue-400/10'
+                      : 'text-gray-500 dark:text-gray-400',
+                  )}
+                  aria-label={modeLabel}
+                  title={modeLabel}
+                >
+                  {mode === 'autonomous' ? (
+                    <Edit3 className="w-3.5 h-3.5" />
+                  ) : (
+                    <MonitorPlay className="w-3.5 h-3.5" />
+                  )}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-xs">
+                {modeTooltip}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+        
         {onTogglePresentation && (
           <button
             onClick={onTogglePresentation}

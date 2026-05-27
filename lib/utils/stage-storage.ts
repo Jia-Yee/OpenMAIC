@@ -3,6 +3,7 @@
  *
  * Manages multiple stage data in IndexedDB
  * Each stage has its own storage key based on stageId
+ * Also syncs to server for cross-device access
  */
 
 import { Stage, Scene } from '../types/stage';
@@ -13,6 +14,38 @@ import { clearPlaybackState } from './playback-storage';
 import { createLogger } from '@/lib/logger';
 
 const log = createLogger('StageStorage');
+
+/**
+ * Sync stage data to server for cross-device access
+ */
+async function syncStageToServer(stageId: string, data: StageStoreData): Promise<void> {
+  try {
+    const response = await fetch('/api/classrooms/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: stageId,
+        name: data.stage.name || '未命名课堂',
+        description: data.stage.description || 'AI 生成的交互式课堂',
+        sceneCount: data.scenes?.length || 0,
+        data: {
+          stage: data.stage,
+          scenes: data.scenes,
+        },
+      }),
+    });
+
+    const result = await response.json();
+    if (result.success) {
+      log.info(`Synced stage to server: ${stageId}`);
+    } else {
+      log.warn(`Failed to sync stage to server: ${result.message}`);
+    }
+  } catch (error) {
+    // Don't throw - server sync is optional
+    log.warn(`Server sync failed for stage ${stageId}:`, error);
+  }
+}
 
 export interface StageStoreData {
   stage: Stage;
@@ -72,6 +105,9 @@ export async function saveStageData(stageId: string, data: StageStoreData): Prom
     }
 
     log.info(`Saved stage: ${stageId}`);
+
+    // Sync to server for cross-device access
+    await syncStageToServer(stageId, data);
   } catch (error) {
     log.error('Failed to save stage:', error);
     throw error;

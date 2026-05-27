@@ -101,7 +101,7 @@ const useStageStoreBase = create<StageState>()((set, get) => ({
   scenes: [],
   currentSceneId: null,
   chats: [],
-  mode: 'playback',
+  mode: 'autonomous',
   toolbarState: 'ai',
   generatingOutlines: [],
   outlines: [],

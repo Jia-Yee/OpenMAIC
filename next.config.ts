@@ -1,7 +1,13 @@
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
-  output: process.env.VERCEL ? undefined : 'standalone',
+  // 移动端构建时使用静态导出
+  output: process.env.MOBILE_BUILD ? 'export' : (process.env.VERCEL ? undefined : 'standalone'),
+  images: process.env.MOBILE_BUILD ? {
+    unoptimized: true,
+  } : undefined,
+  // 移动端构建时排除 API 路由
+  pageExtensions: process.env.MOBILE_BUILD ? ['tsx', 'ts', 'jsx', 'js'] : ['tsx', 'ts', 'jsx', 'js'],
   transpilePackages: ['mathml2omml', 'pptxgenjs'],
   serverExternalPackages: [],
   experimental: {

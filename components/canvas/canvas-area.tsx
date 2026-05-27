@@ -19,6 +19,7 @@ interface CanvasAreaProps extends CanvasToolbarProps {
   readonly isPendingScene?: boolean;
   readonly isGenerationFailed?: boolean;
   readonly onRetryGeneration?: () => void;
+  readonly onToggleMode?: () => void;
 }
 
 export function CanvasArea({
@@ -45,6 +46,7 @@ export function CanvasArea({
   isPendingScene,
   isGenerationFailed,
   onRetryGeneration,
+  onToggleMode,
 }: CanvasAreaProps) {
   const { t } = useI18n();
   const showControls = mode === 'playback' && !whiteboardOpen;
@@ -252,6 +254,8 @@ export function CanvasArea({
           onTogglePresentation={onTogglePresentation}
           showStopDiscussion={showStopDiscussion}
           onStopDiscussion={onStopDiscussion}
+          mode={mode}
+          onToggleMode={onToggleMode}
         />
       )}
     </div>

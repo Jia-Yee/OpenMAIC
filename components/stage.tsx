@@ -46,7 +46,7 @@ export function Stage({
   onRetryOutline?: (outlineId: string) => Promise<void>;
 }) {
   const { t } = useI18n();
-  const { mode, getCurrentScene, scenes, currentSceneId, setCurrentSceneId, generatingOutlines } =
+  const { mode, getCurrentScene, scenes, currentSceneId, setCurrentSceneId, generatingOutlines, setMode } =
     useStageStore();
   const failedOutlines = useStageStore.use.failedOutlines();
 
@@ -771,6 +771,21 @@ export function Stage({
     setWhiteboardOpen(!whiteboardOpen);
   };
 
+  // Mode toggle handler
+  const handleToggleMode = useCallback(() => {
+    const newMode = mode === 'playback' ? 'autonomous' : 'playback';
+    setMode(newMode);
+    
+    // If switching to playback, stop any active engine
+    if (newMode === 'playback' && engineRef.current) {
+      engineRef.current.stop();
+      setEngineMode('idle');
+    }
+    
+    // Save preference to localStorage
+    localStorage.setItem('stage-mode', newMode);
+  }, [mode, setMode]);
+
   const isPresentationShortcutTarget = useCallback((target: EventTarget | null) => {
     if (!(target instanceof HTMLElement)) return false;
 
@@ -969,6 +984,7 @@ export function Stage({
             onNextSlide={handleNextScene}
             onPlayPause={handlePlayPause}
             onWhiteboardClose={handleWhiteboardToggle}
+            onToggleMode={handleToggleMode}
             isPresenting={isPresenting}
             onTogglePresentation={togglePresentation}
             showStopDiscussion={

@@ -20,6 +20,7 @@ export class AudioPlayer {
   private muted: boolean = false;
   private volume: number = 1;
   private playbackRate: number = 1;
+  private isPlaying: boolean = false;
 
   /**
    * Play audio (from URL or IndexedDB pre-generated cache)
@@ -28,7 +29,15 @@ export class AudioPlayer {
    * @returns true if audio started playing, false if no audio (TTS disabled or not generated)
    */
   public async play(audioId: string, audioUrl?: string): Promise<boolean> {
+    // Prevent race condition - if already playing, don't start new playback
+    if (this.isPlaying) {
+      log.debug('Audio is already playing, skipping');
+      return false;
+    }
+
     try {
+      this.isPlaying = true;
+
       // 1. Try audioUrl first (server-generated TTS)
       if (audioUrl) {
         this.stop();
@@ -39,6 +48,7 @@ export class AudioPlayer {
         this.audio.defaultPlaybackRate = this.playbackRate;
         this.audio.playbackRate = this.playbackRate;
         this.audio.addEventListener('ended', () => {
+          this.isPlaying = false;
           this.onEndedCallback?.();
         });
         await this.audio.play();
@@ -51,6 +61,7 @@ export class AudioPlayer {
 
       if (!audioRecord) {
         // Pre-generated audio does not exist (generation failed), skip silently
+        this.isPlaying = false;
         return false;
       }
 
@@ -72,6 +83,7 @@ export class AudioPlayer {
 
       // Set ended callback
       this.audio.addEventListener('ended', () => {
+        this.isPlaying = false;
         URL.revokeObjectURL(blobUrl);
         this.onEndedCallback?.();
       });
@@ -81,8 +93,16 @@ export class AudioPlayer {
       // Re-apply after play() — some browsers reset during load
       this.audio.playbackRate = this.playbackRate;
       return true;
-    } catch (error) {
-      log.error('Failed to play audio:', error);
+    } catch (error: any) {
+      this.isPlaying = false;
+      
+      // Don't log "interrupted" errors as they're expected during normal operation
+      if (error?.message?.includes('interrupted')) {
+        log.debug('Audio playback interrupted (expected):', error);
+      } else {
+        log.error('Failed to play audio:', error);
+      }
+      
       throw error;
     }
   }
@@ -100,6 +120,7 @@ export class AudioPlayer {
    * Stop playback
    */
   public stop(): void {
+    this.isPlaying = false;
     if (this.audio) {
       this.audio.pause();
       this.audio.currentTime = 0;
