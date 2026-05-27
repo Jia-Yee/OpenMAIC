@@ -7,7 +7,7 @@ const config: CapacitorConfig = {
   // 开发模式：使用局域网服务器
   server: {
     // 使用本地开发服务器（局域网访问）
-    url: 'http://192.168.1.4:3005/mobile',
+    url: 'http://192.168.1.4:3000/mobile',
     cleartext: true,
     androidScheme: 'https'
   },
