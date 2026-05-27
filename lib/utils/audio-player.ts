@@ -20,7 +20,7 @@ export class AudioPlayer {
   private muted: boolean = false;
   private volume: number = 1;
   private playbackRate: number = 1;
-  private isPlaying: boolean = false;
+  private _isPlaying: boolean = false;
 
   /**
    * Play audio (from URL or IndexedDB pre-generated cache)
@@ -30,13 +30,13 @@ export class AudioPlayer {
    */
   public async play(audioId: string, audioUrl?: string): Promise<boolean> {
     // Prevent race condition - if already playing, don't start new playback
-    if (this.isPlaying) {
+    if (this._isPlaying) {
       log.debug('Audio is already playing, skipping');
       return false;
     }
 
     try {
-      this.isPlaying = true;
+      this._isPlaying = true;
 
       // 1. Try audioUrl first (server-generated TTS)
       if (audioUrl) {
@@ -48,7 +48,7 @@ export class AudioPlayer {
         this.audio.defaultPlaybackRate = this.playbackRate;
         this.audio.playbackRate = this.playbackRate;
         this.audio.addEventListener('ended', () => {
-          this.isPlaying = false;
+          this._isPlaying = false;
           this.onEndedCallback?.();
         });
         await this.audio.play();
@@ -61,7 +61,7 @@ export class AudioPlayer {
 
       if (!audioRecord) {
         // Pre-generated audio does not exist (generation failed), skip silently
-        this.isPlaying = false;
+        this._isPlaying = false;
         return false;
       }
 
@@ -83,7 +83,7 @@ export class AudioPlayer {
 
       // Set ended callback
       this.audio.addEventListener('ended', () => {
-        this.isPlaying = false;
+        this._isPlaying = false;
         URL.revokeObjectURL(blobUrl);
         this.onEndedCallback?.();
       });
@@ -94,7 +94,7 @@ export class AudioPlayer {
       this.audio.playbackRate = this.playbackRate;
       return true;
     } catch (error: any) {
-      this.isPlaying = false;
+      this._isPlaying = false;
       
       // Don't log "interrupted" errors as they're expected during normal operation
       if (error?.message?.includes('interrupted')) {
@@ -120,7 +120,7 @@ export class AudioPlayer {
    * Stop playback
    */
   public stop(): void {
-    this.isPlaying = false;
+    this._isPlaying = false;
     if (this.audio) {
       this.audio.pause();
       this.audio.currentTime = 0;

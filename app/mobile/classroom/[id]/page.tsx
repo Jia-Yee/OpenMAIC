@@ -178,16 +178,19 @@ export default function MobileClassroomPage() {
     stop();
   }, [stop]);
 
-  // TTS handler
+  // TTS handler — 统一走 CapacitorTTS，避免双音
   const handleSpeak = useCallback(async (text: string) => {
-    if (!ttsEnabled) return;
-
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'zh-CN';
-      utterance.rate = 1.0;
-      window.speechSynthesis.speak(utterance);
+    if (!ttsEnabled || !text) return;
+    try {
+      await CapacitorTTS.speak({
+        text,
+        lang: 'zh-CN',
+        rate: 1.0,
+        pitch: 1.0,
+        volume: 1.0,
+      });
+    } catch (err) {
+      console.warn('[Page] TTS speak failed:', err);
     }
   }, [ttsEnabled]);
 
@@ -403,7 +406,8 @@ export default function MobileClassroomPage() {
             {lectureText && ttsEnabled && (
               <button
                 onClick={() => handleSpeak(lectureText)}
-                className="p-2 rounded-full hover:bg-gray-100 transition"
+                disabled={isSpeaking}
+                className="p-2 rounded-full hover:bg-gray-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
                 title="重新朗读"
               >
                 <Volume2Icon size={20} />

@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">OpenMAIC Player</string>
-    <string name="title_activity_main">OpenMAIC Player</string>
+    <string name="app_name">三叶草</string>
+    <string name="title_activity_main">三叶草</string>
     <string name="package_name">com.openmaic.player</string>
     <string name="custom_url_scheme">com.openmaic.player</string>
     <string name="capacitor_server_url">http://192.168.1.4:3000/mobile</string>

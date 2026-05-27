@@ -301,5 +301,7 @@ export function useMobilePlayback({
     goToAction,
     hasNext: currentActionIndex < actions.length - 1,
     hasPrevious: currentActionIndex > 0,
+    prev: () => goToAction(actionIndexRef.current - 1),
+    next: () => goToAction(actionIndexRef.current + 1),
   };
 }
