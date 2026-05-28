@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 interface Course {
@@ -11,16 +11,21 @@ interface Course {
   videoUrl?: string;
   duration?: number;
   sortOrder: number;
+  prerequisites?: string[]; // 前置课程 ID
 }
 
-interface Level {
+interface Island {
   id: string;
   title: string;
   description?: string;
   locked: boolean;
   completed: boolean;
-  stars: number; // 0-3
-  isTrial?: boolean; // 试用关卡
+  stars: number;
+  isTrial?: boolean;
+  x: number;
+  y: number;
+  prerequisites: string[];
+  unlocked: boolean; // 是否已解锁（前置完成）
 }
 
 export default function AdventureContent() {
@@ -30,64 +35,156 @@ export default function AdventureContent() {
   const gradeId = searchParams.get('gradeId');
   const subjectName = searchParams.get('subjectName') || '数学冒险';
 
-  const [courses, setCourses] = useState<Level[]>([]);
+  const [islands, setIslands] = useState<Island[]>([]);
   const [loading, setLoading] = useState(true);
-  const [unlockedCount, setUnlockedCount] = useState(2); // 前两关免费试用
+  const [unlockedCount, setUnlockedCount] = useState(2);
   const [gradeInfo, setGradeInfo] = useState<{id: string; name: string} | null>(null);
+  const [selectedIsland, setSelectedIsland] = useState<Island | null>(null);
+  
+  // Drag state
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStart = useRef({ x: 0, y: 0 });
+  const offsetStart = useRef({ x: 0, y: 0 });
+
+  // Map size
+  const MAP_WIDTH = 1200;
+  const MAP_HEIGHT = 1600;
 
   useEffect(() => {
+    console.log('Adventure useEffect - subjectId:', subjectId, 'gradeId:', gradeId);
     if (!subjectId) {
+      console.log('No subjectId, redirecting to mobile');
       router.push('/mobile');
       return;
     }
     loadGradesAndCourses();
   }, [subjectId, router]);
 
+  // Mouse/Touch handlers for dragging
+  const handleMouseDown = (e: React.MouseEvent) => {
+    setIsDragging(true);
+    dragStart.current = { x: e.clientX, y: e.clientY };
+    offsetStart.current = { ...offset };
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging) return;
+    const dx = e.clientX - dragStart.current.x;
+    const dy = e.clientY - dragStart.current.y;
+    setOffset({
+      x: Math.min(0, Math.max(-(MAP_WIDTH - window.innerWidth), offsetStart.current.x + dx)),
+      y: Math.min(0, Math.max(-(MAP_HEIGHT - window.innerHeight + 150), offsetStart.current.y + dy)),
+    });
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setIsDragging(true);
+    dragStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    offsetStart.current = { ...offset };
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!isDragging) return;
+    const dx = e.touches[0].clientX - dragStart.current.x;
+    const dy = e.touches[0].clientY - dragStart.current.y;
+    setOffset({
+      x: Math.min(0, Math.max(-(MAP_WIDTH - window.innerWidth), offsetStart.current.x + dx)),
+      y: Math.min(0, Math.max(-(MAP_HEIGHT - window.innerHeight + 150), offsetStart.current.y + dy)),
+    });
+  };
+
+  const handleTouchEnd = () => {
+    setIsDragging(false);
+  };
+
   const loadGradesAndCourses = async () => {
     try {
       setLoading(true);
+      console.log('Loading courses for subject:', subjectId);
       
-      // Load textbooks for this subject
       const textbooksRes = await fetch(`/api/textbooks?subjectId=${subjectId}`);
       const textbooksData = await textbooksRes.json();
       const textbooks = textbooksData.textbooks || [];
+      console.log('Textbooks:', textbooks.length);
       
       if (textbooks.length === 0) {
         setLoading(false);
         return;
       }
       
-      // Get grades for first textbook
       const gradesRes = await fetch(`/api/grades?textbookId=${textbooks[0].id}`);
       const gradesData = await gradesRes.json();
       const grades = gradesData.grades || [];
+      console.log('Grades:', grades.length);
       
       if (grades.length === 0) {
         setLoading(false);
         return;
       }
       
-      // Use first grade (or passed gradeId)
       const targetGradeId = gradeId || grades[0].id;
       const targetGrade = grades.find((g: any) => g.id === targetGradeId) || grades[0];
       setGradeInfo({ id: targetGrade.id, name: targetGrade.name });
+      console.log('Target grade:', targetGrade.id, targetGrade.name);
       
-      // Load courses
       const coursesRes = await fetch(`/api/courses?gradeId=${targetGrade.id}`);
       const coursesData = await coursesRes.json();
+      console.log('Courses:', coursesData.courses?.length);
       
-      // Convert courses to levels with lock status
-      const levels: Level[] = (coursesData.courses || []).map((course: Course, index: number) => ({
-        id: course.id,
-        title: course.title,
-        description: course.description,
-        locked: index >= unlockedCount, // First 2 are free
-        completed: false,
-        stars: 0,
-        isTrial: index < unlockedCount,
-      }));
+      // Position islands in a learning path pattern
+      const positions = [
+        { x: 150, y: 1400 },  // Island 1 - starting point
+        { x: 400, y: 1250 },  // Island 2
+        { x: 250, y: 1050 },  // Island 3
+        { x: 550, y: 900 },   // Island 4
+        { x: 350, y: 700 },   // Island 5
+        { x: 700, y: 600 },   // Island 6
+        { x: 500, y: 400 },   // Island 7
+        { x: 850, y: 350 },   // Island 8
+        { x: 650, y: 200 },   // Island 9
+        { x: 950, y: 150 },   // Island 10 - treasure
+      ];
       
-      setCourses(levels);
+      const courses = coursesData.courses || [];
+      console.log('Courses array:', courses);
+      
+      if (courses.length === 0) {
+        console.log('No courses found');
+        setLoading(false);
+        return;
+      }
+      
+      const tempIslands: Island[] = [];
+      
+      courses.forEach((course: Course, index: number) => {
+        const prerequisites = index > 0 ? [tempIslands[index - 1]?.id] : [];
+        const isTrial = index < unlockedCount;
+        const prevCompleted = index === 0 || tempIslands[index - 1]?.completed;
+        const unlocked = isTrial || prevCompleted;
+        
+        tempIslands.push({
+          id: course.id,
+          title: course.title,
+          description: course.description,
+          locked: !unlocked,
+          completed: false,
+          stars: 0,
+          isTrial,
+          x: positions[index % positions.length].x,
+          y: positions[index % positions.length].y,
+          prerequisites,
+          unlocked,
+        });
+      });
+      
+      setIslands(tempIslands);
+      console.log('Loaded islands:', tempIslands.length, tempIslands);
     } catch (err) {
       console.error('Load courses error:', err);
     } finally {
@@ -95,206 +192,296 @@ export default function AdventureContent() {
     }
   };
 
-  const handleLevelClick = (level: Level) => {
-    if (level.locked) {
-      // Show unlock dialog
+  const handleIslandClick = (island: Island) => {
+    if (isDragging) return;
+    
+    if (island.locked || !island.unlocked) {
+      setSelectedIsland(island);
       return;
     }
-    router.push(`/mobile/classroom/${level.id}?mode=adventure`);
+    router.push(`/mobile/classroom/${island.id}?mode=adventure`);
   };
 
-  const handleBack = () => {
-    router.push('/mobile');
+  // Check if prerequisites are completed
+  const checkUnlocked = (island: Island, allIslands: Island[]): boolean => {
+    if (island.isTrial) return true;
+    return island.prerequisites.every(preId => {
+      const preIsland = allIslands.find(i => i.id === preId);
+      return preIsland?.completed || preIsland?.isTrial;
+    });
   };
 
-  // Generate path positions for levels (snake pattern)
-  const getLevelPosition = (index: number, total: number) => {
-    const row = Math.floor(index / 3);
-    const col = index % 3;
-    const isReverse = row % 2 === 1;
-    const x = isReverse ? 2 - col : col;
-    const y = row;
-    return { x, y };
-  };
+  // Generate random stars
+  const stars = Array.from({ length: 100 }, (_, i) => ({
+    id: i,
+    x: Math.random() * MAP_WIDTH,
+    y: Math.random() * MAP_HEIGHT,
+    size: 1 + Math.random() * 2,
+    opacity: 0.3 + Math.random() * 0.7,
+    delay: Math.random() * 3,
+  }));
+
+  // Generate floating clouds
+  const clouds = Array.from({ length: 12 }, (_, i) => ({
+    id: i,
+    x: Math.random() * MAP_WIDTH,
+    y: Math.random() * MAP_HEIGHT,
+    scale: 0.5 + Math.random() * 0.8,
+    delay: Math.random() * 10,
+  }));
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-900 via-purple-900 to-indigo-900">
-      {/* Stars background */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        {[...Array(50)].map((_, i) => (
-          <div
-            key={i}
-            className="absolute w-1 h-1 bg-white rounded-full animate-pulse"
-            style={{
-              left: `${Math.random() * 100}%`,
-              top: `${Math.random() * 100}%`,
-              animationDelay: `${Math.random() * 2}s`,
-              opacity: Math.random() * 0.7 + 0.3,
-            }}
-          />
-        ))}
-      </div>
-
-      {/* Header */}
-      <header className="relative z-10 p-4">
+    <div className="h-screen bg-gradient-to-b from-indigo-950 via-purple-900 to-blue-900 overflow-hidden relative">
+      {/* Fixed Header */}
+      <header className="absolute top-0 left-0 right-0 z-30 bg-gradient-to-b from-black/50 to-transparent p-4">
         <div className="flex items-center justify-between">
           <button
             onClick={() => router.back()}
-            className="p-2 bg-white/10 rounded-lg hover:bg-white/20 transition"
+            className="p-2 bg-white/10 backdrop-blur-sm rounded-lg hover:bg-white/20 transition"
           >
             <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
           </button>
           <div className="text-center">
-            <h1 className="text-lg font-bold text-white">{gradeInfo?.name || subjectName}</h1>
-            <p className="text-xs text-blue-200">知识冒险之旅</p>
+            <h1 className="text-lg font-bold text-white drop-shadow-md">{gradeInfo?.name || subjectName}</h1>
+            <p className="text-xs text-white/70">星球探索 · 拖动查看更多</p>
           </div>
-          <div className="flex items-center gap-1 bg-yellow-500/20 px-3 py-1 rounded-full">
-            <span className="text-yellow-400">⭐</span>
-            <span className="text-white font-bold">{courses.filter(c => c.completed).length}/{courses.length}</span>
+          <div className="flex items-center gap-1 bg-yellow-400/90 px-3 py-1.5 rounded-full shadow-lg">
+            <span className="text-lg">⭐</span>
+            <span className="text-white font-bold text-sm">{islands.filter(i => i.completed).length}/{islands.length}</span>
           </div>
         </div>
       </header>
 
-      {/* Progress bar */}
-      <div className="px-4 mb-6">
-        <div className="bg-white/10 rounded-full h-2 overflow-hidden">
+      {/* Draggable Map */}
+      <div
+        ref={containerRef}
+        className="absolute inset-0 cursor-grab active:cursor-grabbing"
+        style={{
+          transform: `translate(${offset.x}px, ${offset.y}px)`,
+          width: MAP_WIDTH,
+          height: MAP_HEIGHT,
+        }}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+      >
+        {/* Background stars */}
+        {stars.map(star => (
+          <div
+            key={star.id}
+            className="absolute rounded-full bg-white animate-pulse"
+            style={{
+              left: star.x,
+              top: star.y,
+              width: star.size,
+              height: star.size,
+              opacity: star.opacity,
+              animationDelay: `${star.delay}s`,
+              animationDuration: `${2 + star.delay}s`,
+            }}
+          />
+        ))}
+
+        {/* Floating clouds */}
+        {clouds.map(cloud => (
+          <div
+            key={cloud.id}
+            className="absolute pointer-events-none"
+            style={{
+              left: cloud.x,
+              top: cloud.y,
+              transform: `scale(${cloud.scale})`,
+              animation: `cloudFloat ${15 + cloud.delay}s ease-in-out infinite`,
+              animationDelay: `${cloud.delay}s`,
+            }}
+          >
+            <div className="text-white/20 text-8xl">☁️</div>
+          </div>
+        ))}
+
+        {/* Nebula effects */}
+        <div className="absolute w-96 h-96 bg-purple-500/20 rounded-full blur-3xl" style={{ left: 200, top: 300 }} />
+        <div className="absolute w-80 h-80 bg-blue-500/20 rounded-full blur-3xl" style={{ left: 700, top: 800 }} />
+        <div className="absolute w-72 h-72 bg-pink-500/20 rounded-full blur-3xl" style={{ left: 400, top: 1200 }} />
+
+        {/* Connection paths between islands */}
+        <svg className="absolute inset-0 w-full h-full pointer-events-none">
+          {islands.map((island, index) => {
+            if (index === 0) return null;
+            const prevIsland = islands[index - 1];
+            const isActive = island.unlocked && !island.locked;
+            
+            return (
+              <path
+                key={island.id}
+                d={`M ${prevIsland.x} ${prevIsland.y} Q ${(prevIsland.x + island.x) / 2} ${Math.min(prevIsland.y, island.y) - 50} ${island.x} ${island.y}`}
+                stroke={isActive ? "rgba(255,255,255,0.6)" : "rgba(255,255,255,0.15)"}
+                strokeWidth="3"
+                strokeDasharray={isActive ? "0" : "10,10"}
+                fill="none"
+                className={isActive ? "drop-shadow-lg" : ""}
+              />
+            );
+          })}
+        </svg>
+
+        {/* Islands */}
+        {islands.map((island, index) => (
+          <button
+            key={island.id}
+            onClick={() => handleIslandClick(island)}
+            className={`absolute transition-all duration-300 ${
+              island.locked || !island.unlocked ? 'opacity-40 grayscale' : 'hover:scale-110 active:scale-95'
+            }`}
+            style={{
+              left: island.x,
+              top: island.y,
+              transform: 'translate(-50%, -50%)',
+            }}
+          >
+            {/* Glow effect for active islands */}
+            {!island.locked && island.unlocked && (
+              <div className="absolute inset-0 bg-yellow-400/30 rounded-full blur-xl scale-150 animate-pulse" />
+            )}
+            
+            {/* Island base */}
+            <div className={`relative text-7xl drop-shadow-2xl ${
+              island.completed ? 'animate-bounce' : ''
+            }`}>
+              {island.locked || !island.unlocked ? '🏝️' : island.completed ? '🎊' : '🌌'}
+            </div>
+            
+            {/* Level number badge */}
+            <div className={`absolute -top-3 -left-3 w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold shadow-lg backdrop-blur-sm ${
+              island.completed 
+                ? 'bg-green-500 text-white' 
+                : island.locked || !island.unlocked
+                ? 'bg-gray-700/80 text-gray-300'
+                : 'bg-gradient-to-br from-yellow-400 to-orange-500 text-white'
+            }`}>
+              {island.completed ? '✓' : island.locked || !island.unlocked ? '🔒' : index + 1}
+            </div>
+            
+            {/* Trial badge */}
+            {island.isTrial && island.unlocked && (
+              <div className="absolute -top-2 -right-2 bg-green-500 text-white text-xs px-2 py-1 rounded-full font-bold shadow-lg">
+                免费
+              </div>
+            )}
+            
+            {/* Stars */}
+            {!island.locked && island.unlocked && (
+              <div className="absolute -bottom-4 left-1/2 transform -translate-x-1/2 flex gap-0.5">
+                {[1, 2, 3].map(star => (
+                  <span 
+                    key={star} 
+                    className={`text-lg ${star <= island.stars ? 'text-yellow-400' : 'text-gray-500'}`}
+                  >
+                    ⭐
+                  </span>
+                ))}
+              </div>
+            )}
+            
+            {/* Title */}
+            <div className="absolute -bottom-10 left-1/2 transform -translate-x-1/2 whitespace-nowrap bg-black/70 backdrop-blur-sm text-white text-sm px-3 py-1.5 rounded-lg shadow-lg">
+              {island.title}
+            </div>
+          </button>
+        ))}
+
+        {/* Treasure at the end */}
+        {islands.length > 0 && (
           <div 
-            className="bg-gradient-to-r from-green-400 to-blue-500 h-full transition-all duration-500"
-            style={{ width: `${(courses.filter(c => c.completed).length / Math.max(courses.length, 1)) * 100}%` }}
+            className="absolute"
+            style={{ 
+              left: islands[islands.length - 1].x + 150, 
+              top: islands[islands.length - 1].y - 80,
+              transform: 'translate(-50%, -50%)'
+            }}
+          >
+            <div className="text-6xl animate-bounce drop-shadow-2xl">
+              {islands.every(i => i.completed) ? '🎁' : '📦'}
+            </div>
+            <div className="mt-2 text-white text-sm whitespace-nowrap bg-black/50 backdrop-blur-sm px-3 py-1 rounded-lg">
+              {islands.every(i => i.completed) ? '宝藏已解锁！' : '终极宝藏'}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Unlock Modal */}
+      {selectedIsland && (selectedIsland.locked || !selectedIsland.unlocked) && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-gradient-to-br from-indigo-900 to-purple-900 rounded-3xl p-6 max-w-sm w-full shadow-2xl border border-white/20">
+            <div className="text-center">
+              <div className="text-6xl mb-4">🔐</div>
+              <h2 className="text-xl font-bold text-white mb-2">星球未解锁</h2>
+              <p className="text-white/70 mb-4">
+                完成前置星球或付费解锁「{selectedIsland.title}」
+              </p>
+              
+              {!selectedIsland.isTrial && selectedIsland.prerequisites.length > 0 && (
+                <div className="bg-black/30 rounded-xl p-3 mb-4">
+                  <p className="text-white/60 text-sm">
+                    需要先完成：{islands.find(i => i.id === selectedIsland.prerequisites[0])?.title}
+                  </p>
+                </div>
+              )}
+              
+              <button
+                onClick={() => {
+                  router.push(`/mobile/purchase?gradeId=${gradeInfo?.id}&gradeName=${encodeURIComponent(gradeInfo?.name || '')}&price=199`);
+                  setSelectedIsland(null);
+                }}
+                className="w-full bg-gradient-to-r from-yellow-400 to-orange-500 text-white font-bold py-3 rounded-xl shadow-lg hover:shadow-xl transition-all active:scale-95 mb-2"
+              >
+                🚀 解锁全部星球 · ¥199
+              </button>
+              
+              <button
+                onClick={() => setSelectedIsland(null)}
+                className="w-full text-white/60 py-2 hover:text-white transition"
+              >
+                继续探索
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Fixed bottom info */}
+      <div className="fixed bottom-0 left-0 right-0 z-30 bg-gradient-to-t from-black/80 via-black/40 to-transparent pt-12 pb-4 px-4">
+        <div className="flex items-center justify-between text-sm text-white/80 mb-1">
+          <span>探索进度</span>
+          <span>{Math.round((islands.filter(i => i.completed).length / Math.max(islands.length, 1)) * 100)}%</span>
+        </div>
+        <div className="bg-white/10 rounded-full h-2 overflow-hidden backdrop-blur-sm">
+          <div 
+            className="bg-gradient-to-r from-green-400 to-blue-500 h-full transition-all duration-500 rounded-full"
+            style={{ width: `${(islands.filter(i => i.completed).length / Math.max(islands.length, 1)) * 100}%` }}
           />
         </div>
-        <div className="flex justify-between mt-1">
-          <span className="text-xs text-blue-200">学习进度</span>
-          <span className="text-xs text-blue-200">
-            {Math.round((courses.filter(c => c.completed).length / Math.max(courses.length, 1)) * 100)}%
-          </span>
+        <div className="flex items-center justify-center gap-2 mt-2 text-xs text-white/60">
+          <span>👆 拖动探索星球</span>
+          <span>·</span>
+          <span>{unlockedCount} 个免费试用</span>
         </div>
       </div>
 
-      {/* Main Content - Game Map */}
-      <main className="px-4 pb-24 relative z-10">
-        {loading ? (
-          <div className="flex flex-col items-center justify-center py-12">
-            <div className="animate-spin rounded-full h-12 w-12 border-4 border-white border-t-transparent mb-3"></div>
-            <p className="text-white/80">加载冒险地图...</p>
-          </div>
-        ) : courses.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12">
-            <div className="text-6xl mb-4">🗺️</div>
-            <p className="text-white">冒险地图正在绘制中...</p>
-          </div>
-        ) : (
-          <>
-            {/* Level Grid */}
-            <div className="space-y-4">
-              {courses.map((level, index) => {
-                const prevCompleted = index === 0 || courses[index - 1]?.completed;
-                const canUnlock = !level.locked || prevCompleted;
-                
-                return (
-                  <div key={level.id} className="relative">
-                    {/* Connection line to previous */}
-                    {index > 0 && (
-                      <div className="absolute -top-4 left-1/2 w-1 h-4 bg-white/20 transform -translate-x-1/2" />
-                    )}
-                    
-                    {/* Level Card */}
-                    <button
-                      onClick={() => handleLevelClick(level)}
-                      disabled={level.locked && !canUnlock}
-                      className={`w-full relative rounded-2xl p-4 transition-all transform ${
-                        level.locked 
-                          ? 'bg-gray-800/50 opacity-60' 
-                          : level.completed
-                          ? 'bg-gradient-to-r from-green-500/20 to-emerald-500/20 border-2 border-green-400/50'
-                          : 'bg-gradient-to-r from-blue-500/20 to-purple-500/20 border-2 border-blue-400/50 hover:scale-[1.02] active:scale-[0.98]'
-                      }`}
-                    >
-                      {/* Trial badge */}
-                      {level.isTrial && !level.locked && (
-                        <div className="absolute -top-2 -right-2 bg-green-500 text-white text-xs px-2 py-0.5 rounded-full font-bold">
-                          免费
-                        </div>
-                      )}
-                      
-                      {/* Lock overlay */}
-                      {level.locked && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-2xl">
-                          <div className="text-center">
-                            <div className="text-4xl mb-2">🔒</div>
-                            <p className="text-white/80 text-sm">解锁后可学习</p>
-                          </div>
-                        </div>
-                      )}
-                      
-                      <div className="flex items-center gap-4">
-                        {/* Level number */}
-                        <div className={`w-14 h-14 rounded-xl flex items-center justify-center text-2xl font-bold ${
-                          level.completed 
-                            ? 'bg-green-500 text-white' 
-                            : level.locked
-                            ? 'bg-gray-700 text-gray-400'
-                            : 'bg-gradient-to-br from-yellow-400 to-orange-500 text-white'
-                        }`}>
-                          {level.completed ? '✓' : index + 1}
-                        </div>
-                        
-                        {/* Level info */}
-                        <div className="flex-1 text-left">
-                          <h3 className={`font-bold ${level.locked ? 'text-gray-400' : 'text-white'}`}>
-                            {level.title}
-                          </h3>
-                          {level.description && (
-                            <p className="text-sm text-white/60 mt-0.5 line-clamp-1">
-                              {level.description}
-                            </p>
-                          )}
-                          
-                          {/* Stars */}
-                          <div className="flex gap-1 mt-2">
-                            {[1, 2, 3].map(star => (
-                              <span 
-                                key={star} 
-                                className={`text-lg ${star <= level.stars ? 'text-yellow-400' : 'text-gray-600'}`}
-                              >
-                                ⭐
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                        
-                        {/* Arrow */}
-                        {!level.locked && (
-                          <svg className="w-6 h-6 text-white/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                          </svg>
-                        )}
-                      </div>
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-            
-            {/* Unlock all button */}
-            {courses.some(l => l.locked) && (
-              <div className="fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent">
-                <button
-                  onClick={handleBack}
-                  className="w-full bg-gradient-to-r from-yellow-400 to-orange-500 text-black font-bold py-4 rounded-xl shadow-lg shadow-orange-500/30 hover:shadow-xl transition-all active:scale-[0.98]"
-                >
-                  🎮 解锁全部关卡 · ¥199
-                </button>
-                <p className="text-center text-white/60 text-sm mt-2">
-                  已解锁 {unlockedCount} 个免费试用关卡
-                </p>
-              </div>
-            )}
-          </>
-        )}
-      </main>
+      <style jsx>{`
+        @keyframes cloudFloat {
+          0%, 100% { transform: translateY(0) translateX(0) rotate(0deg); }
+          33% { transform: translateY(-20px) translateX(10px) rotate(2deg); }
+          66% { transform: translateY(10px) translateX(-10px) rotate(-2deg); }
+        }
+      `}</style>
     </div>
   );
 }
