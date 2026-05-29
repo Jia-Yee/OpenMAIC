@@ -105,10 +105,16 @@ export default function GradesContent() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
           </button>
-          <div>
+          <div className="flex-1">
             <h1 className="text-lg font-semibold text-gray-800">{textbookName}</h1>
             <p className="text-xs text-gray-500">选择年级</p>
           </div>
+          <button
+            onClick={() => router.push(`/mobile/multi-purchase?textbookId=${textbookId}&textbookName=${encodeURIComponent(textbookName)}`)}
+            className="px-3 py-1.5 bg-blue-100 text-blue-700 text-sm rounded-lg hover:bg-blue-200 transition"
+          >
+            批量购买
+          </button>
         </div>
       </header>
 

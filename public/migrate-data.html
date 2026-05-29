@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenMAIC 数据迁移工具</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 800px;
+            width: 100%;
+            padding: 40px;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        
+        .step {
+            background: #f8f9fa;
+            border-left: 4px solid #667eea;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+        }
+        
+        .step h3 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 18px;
+        }
+        
+        .step p {
+            color: #555;
+            line-height: 1.6;
+            margin-bottom: 10px;
+        }
+        
+        .code-block {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            overflow-x: auto;
+            margin: 10px 0;
+        }
+        
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin: 5px;
+        }
+        
+        button:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            display: none;
+        }
+        
+        .result.success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+            display: block;
+        }
+        
+        .result.error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+            display: block;
+        }
+        
+        .info-box {
+            background: #e7f3ff;
+            border: 1px solid #b3d9ff;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        
+        .info-box strong {
+            color: #0056b3;
+        }
+        
+        ul {
+            margin-left: 20px;
+            color: #555;
+        }
+        
+        ul li {
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔄 OpenMAIC 数据迁移工具</h1>
+        <p class="subtitle">将课堂数据从 localhost 迁移到 IP 地址</p>
+        
+        <div class="info-box">
+            <strong>⚠️ 重要说明：</strong><br>
+            由于浏览器安全策略，<code>localhost:3000</code> 和 <code>192.168.1.4:3000</code> 
+            的 IndexedDB 是相互独立的。此工具可以帮助你导出数据并导入到新的域名。
+        </div>
+        
+        <div class="step">
+            <h3>📤 步骤 1: 导出数据（在 localhost 页面执行）</h3>
+            <p>1. 打开新标签页访问：<code>http://localhost:3000/</code></p>
+            <p>2. 按 F12 打开开发者工具 → Console</p>
+            <p>3. 复制以下代码并执行：</p>
+            <div class="code-block">
+// 导出所有课堂数据
+async function exportData() {
+    const db = await new Promise((resolve, reject) => {
+        const request = indexedDB.open('MAIC-Database');
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+    
+    const transaction = db.transaction(['stages', 'scenes'], 'readonly');
+    const stagesStore = transaction.objectStore('stages');
+    const scenesStore = transaction.objectStore('scenes');
+    
+    const [stages, scenes] = await Promise.all([
+        new Promise(resolve => {
+            const req = stagesStore.getAll();
+            req.onsuccess = () => resolve(req.result);
+        }),
+        new Promise(resolve => {
+            const req = scenesStore.getAll();
+            req.onsuccess = () => resolve(req.result);
+        })
+    ]);
+    
+    const data = { stages, scenes };
+    const json = JSON.stringify(data);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'openmaic-backup.json';
+    a.click();
+    
+    console.log('✅ 导出成功！共', stages.length, '个课堂，', scenes.length, '个场景');
+    console.log('📦 文件已下载：openmaic-backup.json');
+}
+
+exportData();
+            </div>
+            <button onclick="copyCode(1)">复制代码</button>
+        </div>
+        
+        <div class="step">
+            <h3>📥 步骤 2: 导入数据（在此页面执行）</h3>
+            <p>1. 确保你刚才下载的 <code>openmaic-backup.json</code> 文件可用</p>
+            <p>2. 点击下方按钮选择文件</p>
+            <input type="file" id="fileInput" accept=".json" style="margin: 10px 0;">
+            <br>
+            <button onclick="importData()">导入数据</button>
+            <div id="importResult" class="result"></div>
+        </div>
+        
+        <div class="step">
+            <h3>✅ 步骤 3: 验证数据</h3>
+            <p>导入完成后：</p>
+            <ul>
+                <li>刷新此页面</li>
+                <li>访问 <code>http://192.168.1.4:3000/mobile</code></li>
+                <li>应该能看到所有课堂了！</li>
+            </ul>
+            <button onclick="verifyData()">验证数据</button>
+            <div id="verifyResult" class="result"></div>
+        </div>
+    </div>
+    
+    <script>
+        function copyCode(step) {
+            const codeBlocks = document.querySelectorAll('.code-block');
+            const code = codeBlocks[step - 1].textContent;
+            navigator.clipboard.writeText(code).then(() => {
+                alert('✅ 代码已复制到剪贴板！');
+            });
+        }
+        
+        async function importData() {
+            const fileInput = document.getElementById('fileInput');
+            const resultDiv = document.getElementById('importResult');
+            
+            if (!fileInput.files || fileInput.files.length === 0) {
+                showResult(resultDiv, 'error', '❌ 请先选择备份文件');
+                return;
+            }
+            
+            try {
+                const file = fileInput.files[0];
+                const text = await file.text();
+                const data = JSON.parse(text);
+                
+                if (!data.stages || !data.scenes) {
+                    throw new Error('文件格式不正确');
+                }
+                
+                // 打开数据库
+                const db = await new Promise((resolve, reject) => {
+                    const request = indexedDB.open('MAIC-Database');
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => reject(request.error);
+                });
+                
+                // 导入数据
+                const transaction = db.transaction(['stages', 'scenes'], 'readwrite');
+                const stagesStore = transaction.objectStore('stages');
+                const scenesStore = transaction.objectStore('scenes');
+                
+                // 清空现有数据
+                await new Promise((resolve, reject) => {
+                    const req1 = stagesStore.clear();
+                    const req2 = scenesStore.clear();
+                    req1.onsuccess = () => req2.onsuccess = () => resolve();
+                    req1.onerror = () => reject(req1.error);
+                    req2.onerror = () => reject(req2.error);
+                });
+                
+                // 插入新数据
+                for (const stage of data.stages) {
+                    await new Promise((resolve, reject) => {
+                        const req = stagesStore.put(stage);
+                        req.onsuccess = () => resolve();
+                        req.onerror = () => reject(req.error);
+                    });
+                }
+                
+                for (const scene of data.scenes) {
+                    await new Promise((resolve, reject) => {
+                        const req = scenesStore.put(scene);
+                        req.onsuccess = () => resolve();
+                        req.onerror = () => reject(req.error);
+                    });
+                }
+                
+                showResult(resultDiv, 'success', 
+                    `✅ 导入成功！\n` +
+                    `📚 课堂数量: ${data.stages.length}\n` +
+                    `📄 场景数量: ${data.scenes.length}\n\n` +
+                    `请刷新页面或访问 http://192.168.1.4:3000/mobile 查看`
+                );
+                
+            } catch (error) {
+                showResult(resultDiv, 'error', `❌ 导入失败: ${error.message}`);
+            }
+        }
+        
+        async function verifyData() {
+            const resultDiv = document.getElementById('verifyResult');
+            
+            try {
+                const db = await new Promise((resolve, reject) => {
+                    const request = indexedDB.open('MAIC-Database');
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => reject(request.error);
+                });
+                
+                const transaction = db.transaction(['stages'], 'readonly');
+                const store = transaction.objectStore('stages');
+                
+                const count = await new Promise((resolve, reject) => {
+                    const req = store.count();
+                    req.onsuccess = () => resolve(req.result);
+                    req.onerror = () => reject(req.error);
+                });
+                
+                showResult(resultDiv, 'success', 
+                    `✅ 数据库中有 ${count} 个课堂\n\n` +
+                    `现在可以访问: http://192.168.1.4:3000/mobile`
+                );
+                
+            } catch (error) {
+                showResult(resultDiv, 'error', `❌ 验证失败: ${error.message}`);
+            }
+        }
+        
+        function showResult(element, type, message) {
+            element.className = `result ${type}`;
+            element.textContent = message;
+            element.style.display = 'block';
+        }
+    </script>
+</body>
+</html>

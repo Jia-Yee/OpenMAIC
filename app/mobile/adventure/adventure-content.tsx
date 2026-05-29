@@ -11,7 +11,7 @@ interface Course {
   videoUrl?: string;
   duration?: number;
   sortOrder: number;
-  prerequisites?: string[]; // 前置课程 ID
+  prerequisites?: string[];
 }
 
 interface Island {
@@ -25,7 +25,19 @@ interface Island {
   x: number;
   y: number;
   prerequisites: string[];
-  unlocked: boolean; // 是否已解锁（前置完成）
+  unlocked: boolean;
+}
+
+interface Subject {
+  id: string;
+  name: string;
+  code: string;
+}
+
+interface Grade {
+  id: string;
+  name: string;
+  textbookId: string;
 }
 
 export default function AdventureContent() {
@@ -40,6 +52,12 @@ export default function AdventureContent() {
   const [unlockedCount, setUnlockedCount] = useState(2);
   const [gradeInfo, setGradeInfo] = useState<{id: string; name: string} | null>(null);
   const [selectedIsland, setSelectedIsland] = useState<Island | null>(null);
+  const [showExternalCourse, setShowExternalCourse] = useState(false);
+  
+  // Configuration modal state
+  const [showConfig, setShowConfig] = useState(false);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [grades, setGrades] = useState<Grade[]>([]);
   
   // Drag state
   const containerRef = useRef<HTMLDivElement>(null);
@@ -48,7 +66,6 @@ export default function AdventureContent() {
   const dragStart = useRef({ x: 0, y: 0 });
   const offsetStart = useRef({ x: 0, y: 0 });
 
-  // Map size
   const MAP_WIDTH = 1200;
   const MAP_HEIGHT = 1600;
 
@@ -60,9 +77,45 @@ export default function AdventureContent() {
       return;
     }
     loadGradesAndCourses();
+    loadSubjects();
   }, [subjectId, router]);
 
-  // Mouse/Touch handlers for dragging
+  const loadSubjects = async () => {
+    try {
+      const res = await fetch('/api/subjects');
+      const data = await res.json();
+      setSubjects(data.subjects || []);
+    } catch (err) {
+      console.error('Load subjects error:', err);
+    }
+  };
+
+  const loadGradesForSubject = async (subjectId: string) => {
+    try {
+      const textbooksRes = await fetch(`/api/textbooks?subjectId=${subjectId}`);
+      const textbooksData = await textbooksRes.json();
+      const textbooks = textbooksData.textbooks || [];
+      
+      if (textbooks.length > 0) {
+        const gradesRes = await fetch(`/api/grades?textbookId=${textbooks[0].id}`);
+        const gradesData = await gradesRes.json();
+        setGrades(gradesData.grades || []);
+      }
+    } catch (err) {
+      console.error('Load grades error:', err);
+    }
+  };
+
+  const handleSubjectChange = (subject: Subject) => {
+    loadGradesForSubject(subject.id);
+  };
+
+  const handleGradeSelect = (subject: Subject, grade: Grade) => {
+    router.push(`/mobile/adventure?subjectId=${subject.id}&subjectName=${encodeURIComponent(subject.name)}&gradeId=${grade.id}`);
+    setShowConfig(false);
+  };
+
+  // Mouse/Touch handlers
   const handleMouseDown = (e: React.MouseEvent) => {
     setIsDragging(true);
     dragStart.current = { x: e.clientX, y: e.clientY };
@@ -108,51 +161,63 @@ export default function AdventureContent() {
       setLoading(true);
       console.log('Loading courses for subject:', subjectId);
       
+      console.log('Step 1: Fetching textbooks...');
       const textbooksRes = await fetch(`/api/textbooks?subjectId=${subjectId}`);
+      if (!textbooksRes.ok) {
+        throw new Error(`Textbooks API failed: ${textbooksRes.status}`);
+      }
       const textbooksData = await textbooksRes.json();
       const textbooks = textbooksData.textbooks || [];
-      console.log('Textbooks:', textbooks.length);
+      console.log('Textbooks found:', textbooks.length);
       
       if (textbooks.length === 0) {
+        console.log('No textbooks found');
         setLoading(false);
         return;
       }
       
+      console.log('Step 2: Fetching grades...');
       const gradesRes = await fetch(`/api/grades?textbookId=${textbooks[0].id}`);
+      if (!gradesRes.ok) {
+        throw new Error(`Grades API failed: ${gradesRes.status}`);
+      }
       const gradesData = await gradesRes.json();
       const grades = gradesData.grades || [];
-      console.log('Grades:', grades.length);
+      console.log('Grades found:', grades.length);
       
       if (grades.length === 0) {
+        console.log('No grades found');
         setLoading(false);
         return;
       }
       
       const targetGradeId = gradeId || grades[0].id;
       const targetGrade = grades.find((g: any) => g.id === targetGradeId) || grades[0];
+      console.log('Target grade:', targetGrade.name);
       setGradeInfo({ id: targetGrade.id, name: targetGrade.name });
-      console.log('Target grade:', targetGrade.id, targetGrade.name);
       
+      console.log('Step 3: Fetching courses...');
       const coursesRes = await fetch(`/api/courses?gradeId=${targetGrade.id}`);
+      if (!coursesRes.ok) {
+        throw new Error(`Courses API failed: ${coursesRes.status}`);
+      }
       const coursesData = await coursesRes.json();
-      console.log('Courses:', coursesData.courses?.length);
       
-      // Position islands in a learning path pattern
       const positions = [
-        { x: 150, y: 1400 },  // Island 1 - starting point
-        { x: 400, y: 1250 },  // Island 2
-        { x: 250, y: 1050 },  // Island 3
-        { x: 550, y: 900 },   // Island 4
-        { x: 350, y: 700 },   // Island 5
-        { x: 700, y: 600 },   // Island 6
-        { x: 500, y: 400 },   // Island 7
-        { x: 850, y: 350 },   // Island 8
-        { x: 650, y: 200 },   // Island 9
-        { x: 950, y: 150 },   // Island 10 - treasure
+        { x: 150, y: 1400 },
+        { x: 400, y: 1250 },
+        { x: 250, y: 1050 },
+        { x: 550, y: 900 },
+        { x: 350, y: 700 },
+        { x: 700, y: 600 },
+        { x: 500, y: 400 },
+        { x: 850, y: 350 },
+        { x: 650, y: 200 },
+        { x: 950, y: 150 },
       ];
       
       const courses = coursesData.courses || [];
-      console.log('Courses array:', courses);
+      console.log('Courses found:', courses.length);
       
       if (courses.length === 0) {
         console.log('No courses found');
@@ -162,11 +227,10 @@ export default function AdventureContent() {
       
       const tempIslands: Island[] = [];
       
-      courses.forEach((course: Course, index: number) => {
-        const prerequisites = index > 0 ? [tempIslands[index - 1]?.id] : [];
-        const isTrial = index < unlockedCount;
-        const prevCompleted = index === 0 || tempIslands[index - 1]?.completed;
-        const unlocked = isTrial || prevCompleted;
+      courses.forEach((course: Course & { isFree?: boolean }, index: number) => {
+        const isTrial = course.isFree || false;
+        const prerequisites = course.prerequisites || [];
+        const unlocked = isTrial || prerequisites.length === 0;
         
         tempIslands.push({
           id: course.id,
@@ -183,11 +247,12 @@ export default function AdventureContent() {
         });
       });
       
+      console.log('Islands created:', tempIslands.length);
       setIslands(tempIslands);
-      console.log('Loaded islands:', tempIslands.length, tempIslands);
     } catch (err) {
       console.error('Load courses error:', err);
     } finally {
+      console.log('Setting loading to false');
       setLoading(false);
     }
   };
@@ -199,39 +264,59 @@ export default function AdventureContent() {
       setSelectedIsland(island);
       return;
     }
+    
+    const islandIndex = islands.findIndex(i => i.id === island.id);
+    if (islandIndex === 0) {
+      setShowExternalCourse(true);
+      return;
+    }
+    
     router.push(`/mobile/classroom/${island.id}?mode=adventure`);
   };
 
-  // Check if prerequisites are completed
-  const checkUnlocked = (island: Island, allIslands: Island[]): boolean => {
-    if (island.isTrial) return true;
-    return island.prerequisites.every(preId => {
-      const preIsland = allIslands.find(i => i.id === preId);
-      return preIsland?.completed || preIsland?.isTrial;
-    });
-  };
+  const [stars, setStars] = useState<{ id: number; x: number; y: number; size: number; opacity: number; delay: number }[]>([]);
+  const [clouds, setClouds] = useState<{ id: number; x: number; y: number; scale: number; delay: number }[]>([]);
 
-  // Generate random stars
-  const stars = Array.from({ length: 100 }, (_, i) => ({
-    id: i,
-    x: Math.random() * MAP_WIDTH,
-    y: Math.random() * MAP_HEIGHT,
-    size: 1 + Math.random() * 2,
-    opacity: 0.3 + Math.random() * 0.7,
-    delay: Math.random() * 3,
-  }));
+  useEffect(() => {
+    const generateStars = () => {
+      return Array.from({ length: 100 }, (_, i) => ({
+        id: i,
+        x: Math.random() * MAP_WIDTH,
+        y: Math.random() * MAP_HEIGHT,
+        size: 1 + Math.random() * 2,
+        opacity: 0.3 + Math.random() * 0.7,
+        delay: Math.random() * 3,
+      }));
+    };
 
-  // Generate floating clouds
-  const clouds = Array.from({ length: 12 }, (_, i) => ({
-    id: i,
-    x: Math.random() * MAP_WIDTH,
-    y: Math.random() * MAP_HEIGHT,
-    scale: 0.5 + Math.random() * 0.8,
-    delay: Math.random() * 10,
-  }));
+    const generateClouds = () => {
+      return Array.from({ length: 12 }, (_, i) => ({
+        id: i,
+        x: Math.random() * MAP_WIDTH,
+        y: Math.random() * MAP_HEIGHT,
+        scale: 0.5 + Math.random() * 0.8,
+        delay: Math.random() * 10,
+      }));
+    };
+
+    setStars(generateStars());
+    setClouds(generateClouds());
+  }, []);
+
+  const currentSubject = subjects.find(s => s.id === subjectId);
 
   return (
     <div className="h-screen bg-gradient-to-b from-indigo-950 via-purple-900 to-blue-900 overflow-hidden relative">
+      {/* Loading State */}
+      {loading && (
+        <div className="absolute inset-0 bg-gradient-to-b from-indigo-950 via-purple-900 to-blue-900 flex items-center justify-center z-50">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-4 border-white border-t-transparent mx-auto mb-4"></div>
+            <p className="text-white/70 text-sm">加载课程数据...</p>
+          </div>
+        </div>
+      )}
+      
       {/* Fixed Header */}
       <header className="absolute top-0 left-0 right-0 z-30 bg-gradient-to-b from-black/50 to-transparent p-4">
         <div className="flex items-center justify-between">
@@ -247,9 +332,26 @@ export default function AdventureContent() {
             <h1 className="text-lg font-bold text-white drop-shadow-md">{gradeInfo?.name || subjectName}</h1>
             <p className="text-xs text-white/70">星球探索 · 拖动查看更多</p>
           </div>
-          <div className="flex items-center gap-1 bg-yellow-400/90 px-3 py-1.5 rounded-full shadow-lg">
-            <span className="text-lg">⭐</span>
-            <span className="text-white font-bold text-sm">{islands.filter(i => i.completed).length}/{islands.length}</span>
+          <div className="flex items-center gap-2">
+            {/* Settings Button */}
+            <button
+              onClick={() => {
+                setShowConfig(true);
+                if (currentSubject) {
+                  loadGradesForSubject(currentSubject.id);
+                }
+              }}
+              className="p-2 bg-white/10 backdrop-blur-sm rounded-lg hover:bg-white/20 transition"
+            >
+              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            </button>
+            <div className="flex items-center gap-1 bg-yellow-400/90 px-3 py-1.5 rounded-full shadow-lg">
+              <span className="text-lg">⭐</span>
+              <span className="text-white font-bold text-sm">{islands.filter(i => i.completed).length}/{islands.length}</span>
+            </div>
           </div>
         </div>
       </header>
@@ -310,24 +412,29 @@ export default function AdventureContent() {
         <div className="absolute w-80 h-80 bg-blue-500/20 rounded-full blur-3xl" style={{ left: 700, top: 800 }} />
         <div className="absolute w-72 h-72 bg-pink-500/20 rounded-full blur-3xl" style={{ left: 400, top: 1200 }} />
 
-        {/* Connection paths between islands */}
+        {/* Connection paths */}
         <svg className="absolute inset-0 w-full h-full pointer-events-none">
-          {islands.map((island, index) => {
-            if (index === 0) return null;
-            const prevIsland = islands[index - 1];
-            const isActive = island.unlocked && !island.locked;
+          {islands.map((island) => {
+            if (!island.prerequisites || island.prerequisites.length === 0) return null;
             
-            return (
-              <path
-                key={island.id}
-                d={`M ${prevIsland.x} ${prevIsland.y} Q ${(prevIsland.x + island.x) / 2} ${Math.min(prevIsland.y, island.y) - 50} ${island.x} ${island.y}`}
-                stroke={isActive ? "rgba(255,255,255,0.6)" : "rgba(255,255,255,0.15)"}
-                strokeWidth="3"
-                strokeDasharray={isActive ? "0" : "10,10"}
-                fill="none"
-                className={isActive ? "drop-shadow-lg" : ""}
-              />
-            );
+            return island.prerequisites.map((prereqId) => {
+              const prevIsland = islands.find(i => i.id === prereqId);
+              if (!prevIsland) return null;
+              
+              const isActive = island.unlocked && !island.locked;
+              
+              return (
+                <path
+                  key={`${prevIsland.id}-${island.id}`}
+                  d={`M ${prevIsland.x} ${prevIsland.y} Q ${(prevIsland.x + island.x) / 2} ${Math.min(prevIsland.y, island.y) - 50} ${island.x} ${island.y}`}
+                  stroke={isActive ? "rgba(255,255,255,0.6)" : "rgba(255,255,255,0.15)"}
+                  strokeWidth="3"
+                  strokeDasharray={isActive ? "0" : "10,10"}
+                  fill="none"
+                  className={isActive ? "drop-shadow-lg" : ""}
+                />
+              );
+            });
           })}
         </svg>
 
@@ -345,19 +452,16 @@ export default function AdventureContent() {
               transform: 'translate(-50%, -50%)',
             }}
           >
-            {/* Glow effect for active islands */}
             {!island.locked && island.unlocked && (
               <div className="absolute inset-0 bg-yellow-400/30 rounded-full blur-xl scale-150 animate-pulse" />
             )}
             
-            {/* Island base */}
             <div className={`relative text-7xl drop-shadow-2xl ${
               island.completed ? 'animate-bounce' : ''
             }`}>
               {island.locked || !island.unlocked ? '🏝️' : island.completed ? '🎊' : '🌌'}
             </div>
             
-            {/* Level number badge */}
             <div className={`absolute -top-3 -left-3 w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold shadow-lg backdrop-blur-sm ${
               island.completed 
                 ? 'bg-green-500 text-white' 
@@ -368,14 +472,12 @@ export default function AdventureContent() {
               {island.completed ? '✓' : island.locked || !island.unlocked ? '🔒' : index + 1}
             </div>
             
-            {/* Trial badge */}
             {island.isTrial && island.unlocked && (
               <div className="absolute -top-2 -right-2 bg-green-500 text-white text-xs px-2 py-1 rounded-full font-bold shadow-lg">
                 免费
               </div>
             )}
             
-            {/* Stars */}
             {!island.locked && island.unlocked && (
               <div className="absolute -bottom-4 left-1/2 transform -translate-x-1/2 flex gap-0.5">
                 {[1, 2, 3].map(star => (
@@ -389,14 +491,13 @@ export default function AdventureContent() {
               </div>
             )}
             
-            {/* Title */}
             <div className="absolute -bottom-10 left-1/2 transform -translate-x-1/2 whitespace-nowrap bg-black/70 backdrop-blur-sm text-white text-sm px-3 py-1.5 rounded-lg shadow-lg">
               {island.title}
             </div>
           </button>
         ))}
 
-        {/* Treasure at the end */}
+        {/* Treasure */}
         {islands.length > 0 && (
           <div 
             className="absolute"
@@ -416,7 +517,7 @@ export default function AdventureContent() {
         )}
       </div>
 
-      {/* Unlock Modal */}
+      {/* WeChat QR Code Modal */}
       {selectedIsland && (selectedIsland.locked || !selectedIsland.unlocked) && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-gradient-to-br from-indigo-900 to-purple-900 rounded-3xl p-6 max-w-sm w-full shadow-2xl border border-white/20">
@@ -424,7 +525,7 @@ export default function AdventureContent() {
               <div className="text-6xl mb-4">🔐</div>
               <h2 className="text-xl font-bold text-white mb-2">星球未解锁</h2>
               <p className="text-white/70 mb-4">
-                完成前置星球或付费解锁「{selectedIsland.title}」
+                「{selectedIsland.title}」需要解锁权限
               </p>
               
               {!selectedIsland.isTrial && selectedIsland.prerequisites.length > 0 && (
@@ -435,22 +536,111 @@ export default function AdventureContent() {
                 </div>
               )}
               
-              <button
-                onClick={() => {
-                  router.push(`/mobile/purchase?gradeId=${gradeInfo?.id}&gradeName=${encodeURIComponent(gradeInfo?.name || '')}&price=199`);
-                  setSelectedIsland(null);
-                }}
-                className="w-full bg-gradient-to-r from-yellow-400 to-orange-500 text-white font-bold py-3 rounded-xl shadow-lg hover:shadow-xl transition-all active:scale-95 mb-2"
-              >
-                🚀 解锁全部星球 · ¥199
-              </button>
+              {/* QR Code */}
+              <div className="bg-white rounded-xl p-4 mb-4">
+                <img
+                  src="https://via.placeholder.com/200"
+                  alt="微信二维码"
+                  className="w-full h-auto rounded-lg"
+                />
+              </div>
+              
+              <p className="text-white/80 mb-4">
+                📱 添加管理员微信好友<br/>
+                获取课程解锁权限
+              </p>
               
               <button
                 onClick={() => setSelectedIsland(null)}
-                className="w-full text-white/60 py-2 hover:text-white transition"
+                className="w-full bg-white/10 text-white font-bold py-3 rounded-xl hover:bg-white/20 transition-all active:scale-95"
               >
-                继续探索
+                关闭
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* External Course Modal */}
+      {showExternalCourse && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex flex-col">
+          <div className="flex items-center justify-between p-4 bg-gradient-to-r from-indigo-900 to-purple-900">
+            <h2 className="text-lg font-bold text-white">课程学习</h2>
+            <button
+              onClick={() => setShowExternalCourse(false)}
+              className="p-2 bg-white/10 hover:bg-white/20 rounded-lg transition"
+            >
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          <div className="flex-1 w-full">
+            <iframe
+              src={`${typeof window !== 'undefined' ? window.location.origin : ''}/classroom/x4KkOP4v8fcoLwv2ICn09`}
+              className="w-full h-full"
+              title="课程学习"
+              frameBorder="0"
+              allowFullScreen
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Configuration Modal */}
+      {showConfig && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-bold text-gray-800">选择年级/科目</h2>
+              <button
+                onClick={() => setShowConfig(false)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition"
+              >
+                <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            {/* Subjects */}
+            <div className="mb-4">
+              <h3 className="text-sm font-medium text-gray-600 mb-2">科目</h3>
+              <div className="grid grid-cols-3 gap-2">
+                {subjects.map((subject) => (
+                  <button
+                    key={subject.id}
+                    onClick={() => handleSubjectChange(subject)}
+                    className={`py-2 px-3 rounded-lg text-sm font-medium transition ${
+                      currentSubject?.id === subject.id
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    {subject.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+            
+            {/* Grades */}
+            <div>
+              <h3 className="text-sm font-medium text-gray-600 mb-2">年级</h3>
+              <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto">
+                {grades.map((grade) => (
+                  <button
+                    key={grade.id}
+                    onClick={() => currentSubject && handleGradeSelect(currentSubject, grade)}
+                    className={`py-3 px-4 rounded-lg text-sm font-medium text-left transition ${
+                      gradeInfo?.id === grade.id
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    {grade.name}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </div>

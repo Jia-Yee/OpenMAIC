@@ -44,11 +44,16 @@ export default function ClassroomDetailPage() {
           if (res.ok) {
             const json = await res.json();
             if (json.success && json.classroom) {
-              const { stage, scenes } = json.classroom;
+              const classroomData = json.classroom;
+              const { stage, scenes } = classroomData.data || classroomData;
+              if (!stage) {
+                log.warn('No stage data found in classroom');
+                return;
+              }
               useStageStore.getState().setStage(stage);
               useStageStore.setState({
-                scenes,
-                currentSceneId: scenes[0]?.id ?? null,
+                scenes: scenes || [],
+                currentSceneId: scenes?.[0]?.id ?? null,
               });
               log.info('Loaded from server-side storage:', classroomId);
 

@@ -52,6 +52,12 @@ export default function MobileHome() {
     // Development mode: allow without login
     const isDev = process.env.NODE_ENV === 'development';
     
+    // If logged in, redirect directly to adventure page
+    if ((token || isDev) && !window.location.pathname.includes('login')) {
+      router.push('/mobile/adventure?subjectId=subject-math&subjectName=数学&gradeId=grade-rjb-1a');
+      return;
+    }
+    
     if (!token && !isDev) {
       router.push('/mobile/login');
       return;

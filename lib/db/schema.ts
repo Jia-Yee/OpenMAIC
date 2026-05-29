@@ -4,6 +4,7 @@ import {
   integer,
   real,
   index,
+  unique,
 } from 'drizzle-orm/sqlite-core';
 import { relations } from 'drizzle-orm';
 
@@ -16,11 +17,13 @@ export const users = sqliteTable('users', {
   nickname: text('nickname'),
   avatarUrl: text('avatar_url'),
   phone: text('phone'),
+  password: text('password'),
   createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
   lastLoginAt: integer('last_login_at', { mode: 'timestamp' }),
 }, (table) => ({
   openidIdx: index('users_openid_idx').on(table.openid),
+  phoneIdx: index('users_phone_idx').on(table.phone),
 }));
 
 export const usersRelations = relations(users, ({ many }) => ({
@@ -99,15 +102,65 @@ export const courses = sqliteTable('courses', {
   videoUrl: text('video_url'),
   duration: integer('duration'),
   sortOrder: integer('sort_order').default(0),
+  semester: text('semester').default('full'),
   isActive: integer('is_active', { mode: 'boolean' }).default(true),
+  isFree: integer('is_free', { mode: 'boolean' }).default(false),
   createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
 }, (table) => ({
   gradeIdx: index('courses_grade_idx').on(table.gradeId),
 }));
 
-export const coursesRelations = relations(courses, ({ one }) => ({
+export const coursesRelations = relations(courses, ({ one, many }) => ({
   grade: one(grades, {
     fields: [courses.gradeId],
+    references: [grades.id],
+  }),
+  prerequisites: many(coursePrerequisites),
+}));
+
+export const coursePrerequisites = sqliteTable('course_prerequisites', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  courseId: text('course_id').notNull().references(() => courses.id, { onDelete: 'cascade' }),
+  prerequisiteId: text('prerequisite_id').notNull().references(() => courses.id, { onDelete: 'cascade' }),
+  createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+}, (table) => ({
+  courseIdx: index('course_prerequisites_course_idx').on(table.courseId),
+  prerequisiteIdx: index('course_prerequisites_prerequisite_idx').on(table.prerequisiteId),
+  uniqueConstraint: unique('course_prerequisites_unique').on(table.courseId, table.prerequisiteId),
+}));
+
+export const coursePrerequisitesRelations = relations(coursePrerequisites, ({ one }) => ({
+  course: one(courses, {
+    fields: [coursePrerequisites.courseId],
+    references: [courses.id],
+  }),
+  prerequisite: one(courses, {
+    fields: [coursePrerequisites.prerequisiteId],
+    references: [courses.id],
+  }),
+}));
+
+// ==================== 用户年级权限 ====================
+
+export const userGrades = sqliteTable('user_grades', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  gradeId: text('grade_id').notNull().references(() => grades.id, { onDelete: 'cascade' }),
+  isActive: integer('is_active', { mode: 'boolean' }).default(true),
+  createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+}, (table) => ({
+  userIdx: index('user_grades_user_idx').on(table.userId),
+  gradeIdx: index('user_grades_grade_idx').on(table.gradeId),
+  userGradeIdx: index('user_grades_user_grade_idx').on(table.userId, table.gradeId),
+}));
+
+export const userGradesRelations = relations(userGrades, ({ one }) => ({
+  user: one(users, {
+    fields: [userGrades.userId],
+    references: [users.id],
+  }),
+  grade: one(grades, {
+    fields: [userGrades.gradeId],
     references: [grades.id],
   }),
 }));
@@ -168,6 +221,9 @@ export type Subject = typeof subjects.$inferSelect;
 export type Textbook = typeof textbooks.$inferSelect;
 export type Grade = typeof grades.$inferSelect;
 export type Course = typeof courses.$inferSelect;
+export type NewCourse = typeof courses.$inferInsert;
+export type UserGrade = typeof userGrades.$inferSelect;
+export type NewUserGrade = typeof userGrades.$inferInsert;
 export type Subscription = typeof subscriptions.$inferSelect;
 export type NewSubscription = typeof subscriptions.$inferInsert;
 export type WechatSession = typeof wechatSessions.$inferSelect;

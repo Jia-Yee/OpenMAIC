@@ -10,6 +10,7 @@ interface Course {
   coverUrl?: string;
   videoUrl?: string;
   duration?: number;
+  isFree?: boolean;
 }
 
 export default function CoursesContent() {
@@ -124,6 +125,11 @@ export default function CoursesContent() {
                   <div className="flex items-start justify-between mb-1">
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-gray-400">第{index + 1}课</span>
+                      {course.isFree && (
+                        <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full">
+                          免费
+                        </span>
+                      )}
                     </div>
                     {course.duration && (
                       <span className="text-xs text-gray-500">{formatDuration(course.duration)}</span>

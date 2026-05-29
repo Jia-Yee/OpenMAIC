@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb, initDb } from '@/lib/db';
-import { courses } from '@/lib/db/schema';
+import { courses, coursePrerequisites } from '@/lib/db/schema';
 import { asc, eq } from 'drizzle-orm';
 
 let dbInitialized = false;
@@ -15,7 +15,7 @@ async function ensureDb() {
 
 /**
  * GET /api/courses?gradeId=xxx
- * Get courses by grade
+ * Get courses by grade with prerequisites
  */
 export async function GET(request: Request) {
   try {
@@ -36,7 +36,23 @@ export async function GET(request: Request) {
       .where(eq(courses.gradeId, gradeId))
       .orderBy(asc(courses.sortOrder));
 
-    return NextResponse.json({ courses: result });
+    // Fetch prerequisites for each course
+    const coursesWithPrerequisites = await Promise.all(
+      result.map(async (course) => {
+        const prereqs = await db.select({
+          prerequisiteId: coursePrerequisites.prerequisiteId,
+        })
+          .from(coursePrerequisites)
+          .where(eq(coursePrerequisites.courseId, course.id));
+        
+        return {
+          ...course,
+          prerequisites: prereqs.map(p => p.prerequisiteId),
+        };
+      })
+    );
+
+    return NextResponse.json({ courses: coursesWithPrerequisites });
   } catch (error) {
     console.error('Error fetching courses:', error);
     return NextResponse.json(

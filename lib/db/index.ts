@@ -53,6 +53,14 @@ export async function initDb() {
       last_login_at INTEGER
     )
   `);
+  
+  // Check if password column exists, if not, add it
+  const columnsResult = sqliteDb.exec(`PRAGMA table_info(users)`);
+  const columns = columnsResult[0]?.values || [];
+  const hasPasswordColumn = columns.some((col: any[]) => col[1] === 'password');
+  if (!hasPasswordColumn) {
+    sqliteDb.run(`ALTER TABLE users ADD COLUMN password TEXT`);
+  }
 
   sqliteDb.run(`
     CREATE TABLE IF NOT EXISTS subjects (
@@ -106,6 +114,22 @@ export async function initDb() {
       duration INTEGER,
       sort_order INTEGER DEFAULT 0,
       is_active INTEGER DEFAULT 1,
+      created_at INTEGER
+    )
+  `);
+  
+  const coursesColumnsResult = sqliteDb.exec(`PRAGMA table_info(courses)`);
+  const coursesColumns = coursesColumnsResult[0]?.values || [];
+  const hasIsFreeColumn = coursesColumns.some((col: any[]) => col[1] === 'is_free');
+  if (!hasIsFreeColumn) {
+    sqliteDb.run(`ALTER TABLE courses ADD COLUMN is_free INTEGER DEFAULT 0`);
+  }
+
+  sqliteDb.run(`
+    CREATE TABLE IF NOT EXISTS course_prerequisites (
+      id TEXT PRIMARY KEY,
+      course_id TEXT NOT NULL,
+      prerequisite_id TEXT NOT NULL,
       created_at INTEGER
     )
   `);

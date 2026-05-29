@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TTS Test - Force Audio Activation</title>
+  <style>
+    body { font-family: sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; }
+    button { padding: 16px 32px; font-size: 18px; margin: 20px 0; cursor: pointer; background: #2196F3; color: white; border: none; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.2); }
+    button:hover { background: #1976D2; }
+    .log { background: #f5f5f5; padding: 15px; margin: 20px 0; border-radius: 8px; font-family: monospace; font-size: 12px; max-height: 500px; overflow-y: auto; white-space: pre-wrap; }
+    .success { color: #4CAF50; }
+    .error { color: #f44336; }
+  </style>
+</head>
+<body>
+  <h1>Web Speech API 测试 - 强制音频激活</h1>
+  
+  <button onclick="handleClick()">🎤 点击说话</button>
+  
+  <div class="log" id="log"></div>
+
+  <script>
+    const logEl = document.getElementById('log');
+    let audioContext = null;
+    
+    function log(msg, type = 'info') {
+      const time = new Date().toLocaleTimeString();
+      const className = type === 'success' ? 'success' : type === 'error' ? 'error' : '';
+      logEl.innerHTML += `<span class="${className}">[${time}] ${msg}\n</span>`;
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    // 使用 AudioContext 播放静音来激活音频设备
+    function activateAudio() {
+      return new Promise((resolve) => {
+        if (!audioContext) {
+          audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+          log('✅ 创建 AudioContext');
+        }
+        
+        if (audioContext.state === 'suspended') {
+          audioContext.resume().then(() => {
+            log('✅ AudioContext resumed');
+            resolve();
+          }).catch(err => {
+            log('❌ 无法恢复 AudioContext:', err, 'error');
+            resolve();
+          });
+        } else {
+          resolve();
+        }
+      });
+    }
+
+    // 关键：这个函数直接在用户交互事件处理程序中执行
+    async function handleClick() {
+      log('=== 用户点击事件开始 ===');
+      
+      // 首先激活音频上下文
+      await activateAudio();
+      
+      if (!('speechSynthesis' in window)) {
+        log('❌ speechSynthesis 不可用', 'error');
+        return;
+      }
+
+      log('✅ speechSynthesis 可用');
+      
+      // 取消之前的语音
+      window.speechSynthesis.cancel();
+      log('已取消之前的语音');
+      
+      // 获取语音（同步）
+      const voices = window.speechSynthesis.getVoices();
+      log(`找到 ${voices.length} 个语音`);
+      
+      // 找到中文语音
+      const chineseVoice = voices.find(v => v.lang.includes('zh'));
+      if (chineseVoice) {
+        log(`使用语音: ${chineseVoice.name} (${chineseVoice.lang})`);
+      } else {
+        log('使用默认语音');
+      }
+
+      // === 创建 utterance ===
+      const utterance = new SpeechSynthesisUtterance('你好！这是一个测试。');
+      utterance.lang = 'zh-CN';
+      utterance.volume = 1;
+      utterance.rate = 0.8; // 稍慢一点
+
+      if (chineseVoice) {
+        utterance.voice = chineseVoice;
+      }
+
+      utterance.onstart = () => {
+        log('✅ onstart: 语音开始播放', 'success');
+      };
+
+      utterance.onend = () => {
+        log('✅ onend: 语音播放结束', 'success');
+      };
+
+      utterance.onerror = (e) => {
+        log(`❌ onerror: ${e.error}`, 'error');
+        
+        // 尝试使用默认语音重试
+        if (e.error === 'interrupted' || e.error === 'cancelled') {
+          log('尝试使用默认语音重试...');
+          const retryUtterance = new SpeechSynthesisUtterance('Hello World');
+          retryUtterance.lang = 'en-US';
+          retryUtterance.volume = 1;
+          retryUtterance.onend = () => log('✅ 英文语音成功', 'success');
+          retryUtterance.onerror = (err) => log(`❌ 英文也失败: ${err.error}`, 'error');
+          window.speechSynthesis.speak(retryUtterance);
+        }
+      };
+
+      log('📢 调用 speechSynthesis.speak()');
+      
+      // 关键：这行代码必须在用户交互事件处理程序中直接执行
+      window.speechSynthesis.speak(utterance);
+      
+      log('=== 用户点击事件结束 ===');
+    }
+
+    log('页面加载完成，请点击按钮测试语音合成');
+    log('浏览器: ' + navigator.userAgent);
+  </script>
+</body>
+</html>

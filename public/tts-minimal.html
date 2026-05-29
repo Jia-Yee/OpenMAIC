@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Minimal TTS Test</title>
+</head>
+<body>
+  <button onclick="test()">Speak</button>
+  
+  <script>
+    function test() {
+      const u = new SpeechSynthesisUtterance('Hello');
+      u.lang = 'en-US';
+      speechSynthesis.speak(u);
+    }
+  </script>
+</body>
+</html>
