@@ -70,6 +70,9 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     if (body.password) {
       updateData.password = await hashPassword(body.password);
     }
+    if (body.isAdmin !== undefined) {
+      updateData.isAdmin = body.isAdmin;
+    }
 
     await db.update(users)
       .set(updateData)

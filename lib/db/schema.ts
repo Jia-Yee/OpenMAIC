@@ -18,6 +18,7 @@ export const users = sqliteTable('users', {
   avatarUrl: text('avatar_url'),
   phone: text('phone'),
   password: text('password'),
+  isAdmin: integer('is_admin', { mode: 'boolean' }).default(false),
   createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
   lastLoginAt: integer('last_login_at', { mode: 'timestamp' }),

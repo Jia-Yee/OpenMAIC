@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getDb, initDb } from '@/lib/db';
+import { getDb, initDb, autoSaveDb } from '@/lib/db';
 import { users } from '@/lib/db/schema';
 import { asc, eq } from 'drizzle-orm';
 import type { NewUser } from '@/lib/db/schema';
@@ -52,7 +52,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { openid: providedOpenid, nickname, avatarUrl, phone, password } = body;
+    const { openid: providedOpenid, nickname, avatarUrl, phone, password, isAdmin } = body;
 
     // Auto-generate openid if not provided
     const openid = providedOpenid || generateOpenId();
@@ -85,11 +85,15 @@ export async function POST(request: Request) {
       avatarUrl: avatarUrl || '',
       phone: phone || '',
       password: hashedPassword,
+      isAdmin: isAdmin || false,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
 
     await db.insert(users).values(newUser);
+
+    // Auto-save database after write operation
+    autoSaveDb();
 
     return NextResponse.json({ 
       success: true, 

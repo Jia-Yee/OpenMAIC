@@ -20,6 +20,7 @@ import {
   ChevronUp,
   Upload,
   RefreshCw,
+  LogOut,
 } from 'lucide-react';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import { LanguageSwitcher } from '@/components/language-switcher';
@@ -36,6 +37,7 @@ import { storePdfBlob } from '@/lib/utils/image-storage';
 import type { UserRequirements } from '@/lib/types/generation';
 import { useSettingsStore } from '@/lib/store/settings';
 import { useUserProfileStore, AVATAR_OPTIONS } from '@/lib/store/user-profile';
+import { useAuthStore } from '@/lib/store/auth';
 import {
   StageListItem,
   listStages,
@@ -51,6 +53,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useDraftCache } from '@/lib/hooks/use-draft-cache';
 import { SpeechButton } from '@/components/audio/speech-button';
 import { useImportClassroom } from '@/lib/import/use-import-classroom';
+import { AuthGuard } from '@/components/auth-guard';
 
 const log = createLogger('Home');
 
@@ -734,6 +737,8 @@ function GreetingBar() {
   const setAvatar = useUserProfileStore((s) => s.setAvatar);
   const setNickname = useUserProfileStore((s) => s.setNickname);
   const setBio = useUserProfileStore((s) => s.setBio);
+  
+  const { user, isAdmin, logout } = useAuthStore();
 
   const [open, setOpen] = useState(false);
   const [editingName, setEditingName] = useState(false);
@@ -995,6 +1000,27 @@ function GreetingBar() {
                   rows={2}
                   className="resize-none border-border/40 bg-transparent min-h-[72px] !text-[13px] !leading-relaxed placeholder:!text-[11px] placeholder:!leading-relaxed focus-visible:ring-1 focus-visible:ring-border/60"
                 />
+
+                {/* Admin Badge */}
+                {isAdmin && (
+                  <div className="mt-2 flex items-center justify-center">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                      管理员
+                    </span>
+                  </div>
+                )}
+
+                {/* Logout */}
+                <button
+                  onClick={() => {
+                    logout();
+                    window.location.href = '/login';
+                  }}
+                  className="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                >
+                  <LogOut className="size-4" />
+                  <span>退出登录</span>
+                </button>
               </div>
             </div>
           </motion.div>
@@ -1207,5 +1233,9 @@ function ClassroomCard({
 }
 
 export default function Page() {
-  return <HomePage />;
+  return (
+    <AuthGuard>
+      <HomePage />
+    </AuthGuard>
+  );
 }

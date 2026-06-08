@@ -44,7 +44,7 @@ export async function GET(request: Request) {
         .from(subscriptions)
         .where(and(
           eq(subscriptions.userId, userId),
-          eq(subscriptions.status, 'active'),
+          eq(subscriptions.status, 'paid'),
         ));
       
       activeGradeIds = userSubscriptions

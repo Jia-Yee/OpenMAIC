@@ -1,6 +1,7 @@
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
+  basePath: process.env.BASE_PATH || '',
   // 移动端构建时使用静态导出
   output: process.env.MOBILE_BUILD ? 'export' : (process.env.VERCEL ? undefined : 'standalone'),
   images: process.env.MOBILE_BUILD ? {

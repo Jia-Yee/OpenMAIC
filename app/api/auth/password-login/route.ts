@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDb, initDb } from '@/lib/db';
 import { users } from '@/lib/db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, or } from 'drizzle-orm';
 import { generateToken, comparePassword } from '@/lib/auth';
 
 let dbInitialized = false;
@@ -17,11 +17,12 @@ async function ensureDb() {
 /**
  * POST /api/auth/password-login
  * Password login with phone and password
+ * Supports admin login as any user
  */
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { phone, password } = body;
+    const { phone, password, loginAsUserId } = body;
 
     if (!phone || !password) {
       return NextResponse.json(
@@ -64,22 +65,37 @@ export async function POST(request: Request) {
       );
     }
 
+    let loginUser = user;
+
+    // Admin can login as any user
+    if (user.isAdmin && loginAsUserId) {
+      const targetUserResults = await db.select()
+        .from(users)
+        .where(eq(users.id, loginAsUserId))
+        .limit(1);
+
+      if (targetUserResults[0]) {
+        loginUser = targetUserResults[0];
+      }
+    }
+
     // Update last login time
     await db.update(users)
       .set({ lastLoginAt: new Date() })
-      .where(eq(users.id, user.id));
+      .where(eq(users.id, loginUser.id));
 
     // Generate JWT
-    const token = generateToken({ userId: user.id, openid: user.openid });
+    const token = generateToken({ userId: loginUser.id, openid: loginUser.openid, isAdmin: user.isAdmin });
 
     return NextResponse.json({
       success: true,
       token,
+      isAdmin: user.isAdmin,
       user: {
-        id: user.id,
-        nickname: user.nickname,
-        avatarUrl: user.avatarUrl,
-        phone: user.phone,
+        id: loginUser.id,
+        nickname: loginUser.nickname,
+        avatarUrl: loginUser.avatarUrl,
+        phone: loginUser.phone,
       },
     });
   } catch (error) {

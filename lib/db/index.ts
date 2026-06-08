@@ -18,8 +18,20 @@ export function autoSaveDb() {
   }
 }
 
+// Use a global flag to track initialization across module reloads
+const INIT_FLAG_KEY = '__openmaic_db_initialized__';
+
+declare global {
+  var __openmaic_db_initialized__: boolean | undefined;
+}
+
 export async function initDb() {
   if (db) return db;
+  
+  // Check global flag for development mode persistence
+  if ((globalThis as any).__openmaic_db_initialized__) {
+    if (db) return db;
+  }
 
   // Ensure data directory exists
   if (!existsSync(dirname(dbPath))) {
@@ -68,6 +80,12 @@ export async function initDb() {
   const hasPasswordColumn = columns.some((col: any[]) => col[1] === 'password');
   if (!hasPasswordColumn) {
     sqliteDb.run(`ALTER TABLE users ADD COLUMN password TEXT`);
+  }
+
+  // Check if isAdmin column exists, if not, add it
+  const hasIsAdminColumn = columns.some((col: any[]) => col[1] === 'is_admin');
+  if (!hasIsAdminColumn) {
+    sqliteDb.run(`ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0`);
   }
 
   sqliteDb.run(`
@@ -494,6 +512,9 @@ export async function initDb() {
     saveDb();
     process.exit(0);
   });
+
+  // Set global initialization flag
+  (globalThis as any)[INIT_FLAG_KEY] = true;
 
   return db;
 }
