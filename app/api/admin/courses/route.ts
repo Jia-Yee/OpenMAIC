@@ -1,8 +1,12 @@
 import { NextResponse } from 'next/server';
-import { getDb, initDb } from '@/lib/db';
+import { getDb, initDb, getSqliteDb } from '@/lib/db';
 import { courses, grades, textbooks, subjects } from '@/lib/db/schema';
 import { eq, asc } from 'drizzle-orm';
 import type { NewCourse } from '@/lib/db/schema';
+import { writeFileSync, existsSync } from 'fs';
+import { dirname } from 'path';
+
+const dbPath = process.env.DATABASE_PATH || './data/clover.db';
 
 let dbInitialized = false;
 
@@ -12,6 +16,20 @@ async function ensureDb() {
     dbInitialized = true;
   }
   return getDb();
+}
+
+// Save database to file
+function saveDatabase() {
+  try {
+    const sqliteDb = getSqliteDb();
+    if (sqliteDb && existsSync(dirname(dbPath))) {
+      const data = sqliteDb.export();
+      writeFileSync(dbPath, Buffer.from(data));
+      console.log('✅ Database saved successfully');
+    }
+  } catch (error) {
+    console.error('Error saving database:', error);
+  }
 }
 
 /**
@@ -32,6 +50,7 @@ export async function GET(request: Request) {
       description: courses.description,
       coverUrl: courses.coverUrl,
       videoUrl: courses.videoUrl,
+      classroomId: courses.classroomId,
       duration: courses.duration,
       sortOrder: courses.sortOrder,
       semester: courses.semester,
@@ -71,7 +90,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { gradeId, title, description, coverUrl, videoUrl, duration, sortOrder, semester, isFree } = body;
+    const { gradeId, title, description, coverUrl, videoUrl, classroomId, duration, sortOrder, semester, isFree } = body;
 
     if (!gradeId || !title) {
       return NextResponse.json(
@@ -88,6 +107,7 @@ export async function POST(request: Request) {
       description: description || '',
       coverUrl: coverUrl || '',
       videoUrl: videoUrl || '',
+      classroomId: classroomId || '',
       duration: duration || 0,
       sortOrder: sortOrder || 0,
       semester: semester || 'full',
@@ -97,6 +117,9 @@ export async function POST(request: Request) {
     };
 
     const result = await db.insert(courses).values(newCourse);
+
+    // Save database to file
+    saveDatabase();
 
     return NextResponse.json({
       success: true,

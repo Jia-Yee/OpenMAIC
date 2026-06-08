@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getDb, initDb } from '@/lib/db';
+import { getDb, initDb, autoSaveDb } from '@/lib/db';
 import { courses } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 
@@ -58,6 +58,9 @@ export async function PUT(request: Request) {
       }
       currentOrder++;
     }
+
+    // Save database to disk
+    autoSaveDb();
 
     return NextResponse.json({
       success: true,

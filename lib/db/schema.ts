@@ -100,6 +100,7 @@ export const courses = sqliteTable('courses', {
   description: text('description'),
   coverUrl: text('cover_url'),
   videoUrl: text('video_url'),
+  classroomId: text('classroom_id'),
   duration: integer('duration'),
   sortOrder: integer('sort_order').default(0),
   semester: text('semester').default('full'),
@@ -194,6 +195,35 @@ export const subscriptionsRelations = relations(subscriptions, ({ one }) => ({
   grade: one(grades, {
     fields: [subscriptions.gradeId],
     references: [grades.id],
+  }),
+}));
+
+// ==================== 学习进度相关 ====================
+
+export const learningProgress = sqliteTable('learning_progress', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  courseId: text('course_id').notNull().references(() => courses.id, { onDelete: 'cascade' }),
+  progress: integer('progress').default(0), // 0-100
+  completed: integer('completed', { mode: 'boolean' }).default(false),
+  stars: integer('stars').default(0), // 0-3
+  lastAccessAt: integer('last_access_at', { mode: 'timestamp' }),
+  createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+}, (table) => ({
+  userIdx: index('learning_progress_user_idx').on(table.userId),
+  courseIdx: index('learning_progress_course_idx').on(table.courseId),
+  userCourseIdx: index('learning_progress_user_course_idx').on(table.userId, table.courseId),
+}));
+
+export const learningProgressRelations = relations(learningProgress, ({ one }) => ({
+  user: one(users, {
+    fields: [learningProgress.userId],
+    references: [users.id],
+  }),
+  course: one(courses, {
+    fields: [learningProgress.courseId],
+    references: [courses.id],
   }),
 }));
 

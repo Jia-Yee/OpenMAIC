@@ -26,6 +26,7 @@ interface Island {
   y: number;
   prerequisites: string[];
   unlocked: boolean;
+  classroomId?: string;
 }
 
 interface Subject {
@@ -38,6 +39,13 @@ interface Grade {
   id: string;
   name: string;
   textbookId: string;
+}
+
+interface User {
+  id: string;
+  nickname: string;
+  avatarUrl?: string;
+  phone?: string;
 }
 
 export default function AdventureContent() {
@@ -53,6 +61,14 @@ export default function AdventureContent() {
   const [gradeInfo, setGradeInfo] = useState<{id: string; name: string} | null>(null);
   const [selectedIsland, setSelectedIsland] = useState<Island | null>(null);
   const [showExternalCourse, setShowExternalCourse] = useState(false);
+  
+  // User state
+  const [user, setUser] = useState<User | null>(null);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [loginForm, setLoginForm] = useState({ phone: '', password: '' });
+  const [loginError, setLoginError] = useState('');
+  const [loginLoading, setLoginLoading] = useState(false);
   
   // Configuration modal state
   const [showConfig, setShowConfig] = useState(false);
@@ -76,9 +92,10 @@ export default function AdventureContent() {
       router.push('/mobile');
       return;
     }
+    checkAuth();
     loadGradesAndCourses();
     loadSubjects();
-  }, [subjectId, router]);
+  }, [subjectId, gradeId, router]);
 
   const loadSubjects = async () => {
     try {
@@ -113,6 +130,70 @@ export default function AdventureContent() {
   const handleGradeSelect = (subject: Subject, grade: Grade) => {
     router.push(`/mobile/adventure?subjectId=${subject.id}&subjectName=${encodeURIComponent(subject.name)}&gradeId=${grade.id}`);
     setShowConfig(false);
+  };
+
+  // User authentication functions
+  const checkAuth = () => {
+    const token = localStorage.getItem('token');
+    const userData = localStorage.getItem('user');
+    if (token && userData) {
+      try {
+        const parsedUser = JSON.parse(userData);
+        setUser(parsedUser);
+        setIsLoggedIn(true);
+      } catch (e) {
+        console.error('Failed to parse user data:', e);
+        logout();
+      }
+    }
+  };
+
+  const login = async () => {
+    if (!loginForm.phone || !loginForm.password) {
+      setLoginError('请输入手机号和密码');
+      return;
+    }
+
+    setLoginLoading(true);
+    setLoginError('');
+
+    try {
+      const res = await fetch('/api/auth/password-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: loginForm.phone,
+          password: loginForm.password,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(data.user));
+        setUser(data.user);
+        setIsLoggedIn(true);
+        setShowLoginModal(false);
+        setLoginForm({ phone: '', password: '' });
+        loadGradesAndCourses(); // Refresh courses after login
+      } else {
+        setLoginError(data.error || '登录失败');
+      }
+    } catch (error) {
+      console.error('Login error:', error);
+      setLoginError('登录失败，请稍后重试');
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  const logout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    setUser(null);
+    setIsLoggedIn(false);
+    loadGradesAndCourses(); // Refresh courses after logout
   };
 
   // Mouse/Touch handlers
@@ -197,11 +278,19 @@ export default function AdventureContent() {
       setGradeInfo({ id: targetGrade.id, name: targetGrade.name });
       
       console.log('Step 3: Fetching courses...');
-      const coursesRes = await fetch(`/api/courses?gradeId=${targetGrade.id}`);
+      // Get token from localStorage
+      const token = localStorage.getItem('token');
+      const headers: HeadersInit = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      
+      const coursesRes = await fetch(`/api/user/courses?gradeId=${targetGrade.id}`, { headers });
       if (!coursesRes.ok) {
         throw new Error(`Courses API failed: ${coursesRes.status}`);
       }
       const coursesData = await coursesRes.json();
+      console.log('User courses response:', coursesData);
       
       const positions = [
         { x: 150, y: 1400 },
@@ -225,25 +314,51 @@ export default function AdventureContent() {
         return;
       }
       
+      // Fetch learning progress
+      let progressMap: Record<string, { progress: number; completed: boolean; stars: number }> = {};
+      if (token) {
+        try {
+          const progressRes = await fetch('/api/user/progress', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`,
+            },
+            body: JSON.stringify({ gradeId: targetGrade.id }),
+          });
+          const progressData = await progressRes.json();
+          progressMap = progressData.progress || {};
+          console.log('Learning progress:', progressMap);
+        } catch (err) {
+          console.error('Failed to fetch progress:', err);
+        }
+      }
+      
       const tempIslands: Island[] = [];
       
-      courses.forEach((course: Course & { isFree?: boolean }, index: number) => {
+      courses.forEach((course: Course & { isFree?: boolean; unlocked?: boolean }, index: number) => {
         const isTrial = course.isFree || false;
         const prerequisites = course.prerequisites || [];
-        const unlocked = isTrial || prerequisites.length === 0;
+        const unlocked = course.unlocked !== undefined ? course.unlocked : (isTrial || prerequisites.length === 0);
+        
+        // Get progress from progressMap
+        const progress = progressMap[course.id] || { progress: 0, completed: false, stars: 0 };
+        
+        console.log('Course:', course.title, 'prerequisites:', prerequisites, 'isFree:', isTrial, 'unlocked:', unlocked, 'completed:', progress.completed, 'stars:', progress.stars);
         
         tempIslands.push({
           id: course.id,
           title: course.title,
           description: course.description,
           locked: !unlocked,
-          completed: false,
-          stars: 0,
+          completed: progress.completed,
+          stars: progress.stars,
           isTrial,
           x: positions[index % positions.length].x,
           y: positions[index % positions.length].y,
           prerequisites,
           unlocked,
+          classroomId: (course as Course & { classroomId?: string }).classroomId,
         });
       });
       
@@ -271,7 +386,11 @@ export default function AdventureContent() {
       return;
     }
     
-    router.push(`/mobile/classroom/${island.id}?mode=adventure`);
+    if (island.classroomId) {
+      router.push(`/mobile/classroom/${island.classroomId}?mode=adventure`);
+    } else {
+      console.warn('No classroom associated with course:', island.title);
+    }
   };
 
   const [stars, setStars] = useState<{ id: number; x: number; y: number; size: number; opacity: number; delay: number }[]>([]);
@@ -348,6 +467,39 @@ export default function AdventureContent() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
             </button>
+            
+            {/* User Profile / Login */}
+            {isLoggedIn && user ? (
+              <div className="relative">
+                <button className="p-2 bg-white/10 backdrop-blur-sm rounded-lg hover:bg-white/20 transition flex items-center gap-2">
+                  {user.avatarUrl ? (
+                    <img src={user.avatarUrl} alt={user.nickname} className="w-8 h-8 rounded-full object-cover" />
+                  ) : (
+                    <div className="w-8 h-8 bg-gradient-to-br from-indigo-400 to-purple-500 rounded-full flex items-center justify-center text-white text-sm font-bold">
+                      {user.nickname?.[0] || '?'}
+                    </div>
+                  )}
+                  <span className="text-white text-sm font-medium">{user.nickname || '用户'}</span>
+                </button>
+                {/* Logout menu */}
+                <div className="absolute right-0 top-full mt-2 w-32 bg-white rounded-lg shadow-xl border border-gray-100 py-2 z-50">
+                  <button
+                    onClick={logout}
+                    className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 transition"
+                  >
+                    退出登录
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowLoginModal(true)}
+                className="px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-500 text-white rounded-lg font-medium text-sm hover:opacity-90 transition"
+              >
+                登录
+              </button>
+            )}
+            
             <div className="flex items-center gap-1 bg-yellow-400/90 px-3 py-1.5 rounded-full shadow-lg">
               <span className="text-lg">⭐</span>
               <span className="text-white font-bold text-sm">{islands.filter(i => i.completed).length}/{islands.length}</span>
@@ -664,6 +816,67 @@ export default function AdventureContent() {
           <span>{unlockedCount} 个免费试用</span>
         </div>
       </div>
+
+      {/* Login Modal */}
+      {showLoginModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl">
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+              </div>
+              <h2 className="text-xl font-bold text-gray-800">用户登录</h2>
+              <p className="text-gray-500 text-sm mt-1">请输入账号密码登录</p>
+            </div>
+            
+            {loginError && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm">
+                {loginError}
+              </div>
+            )}
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">手机号</label>
+                <input
+                  type="tel"
+                  value={loginForm.phone}
+                  onChange={(e) => setLoginForm({ ...loginForm, phone: e.target.value })}
+                  placeholder="请输入手机号"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">密码</label>
+                <input
+                  type="password"
+                  value={loginForm.password}
+                  onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })}
+                  placeholder="请输入密码"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                />
+              </div>
+            </div>
+            
+            <button
+              onClick={login}
+              disabled={loginLoading}
+              className="w-full mt-6 bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-bold py-3 rounded-xl hover:opacity-90 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loginLoading ? '登录中...' : '登录'}
+            </button>
+            
+            <button
+              onClick={() => setShowLoginModal(false)}
+              className="w-full mt-3 text-gray-500 text-sm hover:text-gray-700 transition"
+            >
+              取消
+            </button>
+          </div>
+        </div>
+      )}
 
       <style jsx>{`
         @keyframes cloudFloat {

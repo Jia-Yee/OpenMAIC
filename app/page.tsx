@@ -19,6 +19,7 @@ import {
   BotOff,
   ChevronUp,
   Upload,
+  RefreshCw,
 } from 'lucide-react';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import { LanguageSwitcher } from '@/components/language-switcher';
@@ -148,6 +149,44 @@ function HomePage() {
       }
     } catch (err) {
       log.error('Failed to load classrooms:', err);
+    }
+  };
+
+  const handleSyncAllClassrooms = async () => {
+    try {
+      const list = await listStages();
+      const classroomData = await Promise.all(
+        list.map(async (classroom) => {
+          const stageData = await db.stages.get(classroom.id);
+          const scenes = await db.scenes.where('stageId').equals(classroom.id).toArray();
+          return {
+            id: classroom.id,
+            name: classroom.name,
+            description: classroom.description,
+            sceneCount: classroom.sceneCount,
+            data: {
+              stage: stageData,
+              scenes,
+            },
+          };
+        })
+      );
+
+      const response = await fetch('/api/admin/classrooms/sync-all', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ classrooms: classroomData }),
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        toast.success(`已同步 ${result.synced} 个课堂到服务器`);
+      } else {
+        toast.error(result.error || '同步失败');
+      }
+    } catch (err) {
+      log.error('Failed to sync classrooms:', err);
+      toast.error('同步失败');
     }
   };
 
@@ -614,6 +653,16 @@ function HomePage() {
                 <Upload className="size-3" />
                 <span className="overflow-hidden opacity-0 group-hover/import:opacity-100 transition-opacity duration-200 whitespace-nowrap">
                   {t('import.classroom')}
+                </span>
+              </button>
+              <button
+                onClick={handleSyncAllClassrooms}
+                disabled={importing}
+                className="group/sync grid grid-cols-[auto_0fr] hover:grid-cols-[auto_1fr] items-center gap-1 rounded-full px-1.5 py-0.5 text-[12px] text-muted-foreground/35 hover:text-muted-foreground/70 hover:bg-muted/50 transition-all duration-200 cursor-pointer"
+              >
+                <RefreshCw className="size-3" />
+                <span className="overflow-hidden opacity-0 group-hover/sync:opacity-100 transition-opacity duration-200 whitespace-nowrap">
+                  同步所有课堂
                 </span>
               </button>
             </div>

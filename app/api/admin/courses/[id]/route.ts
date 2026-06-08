@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
-import { getDb, initDb } from '@/lib/db';
+import { getDb, initDb, getSqliteDb } from '@/lib/db';
 import { courses, coursePrerequisites } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
+import { writeFileSync, existsSync } from 'fs';
+import { dirname } from 'path';
+
+const dbPath = process.env.DATABASE_PATH || './data/clover.db';
 
 let dbInitialized = false;
 
@@ -13,13 +17,27 @@ async function ensureDb() {
   return getDb();
 }
 
+// Save database to file
+function saveDatabase() {
+  try {
+    const sqliteDb = getSqliteDb();
+    if (sqliteDb && existsSync(dirname(dbPath))) {
+      const data = sqliteDb.export();
+      writeFileSync(dbPath, Buffer.from(data));
+      console.log('✅ Database saved successfully');
+    }
+  } catch (error) {
+    console.error('Error saving database:', error);
+  }
+}
+
 /**
  * GET /api/admin/courses/{id}
  * Get a single course by ID
  */
-export async function GET(request: Request, { params }: { params: { id: string } }) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { id } = params;
+    const { id } = await params;
     const db = await ensureDb();
 
     const course = await db.select()
@@ -53,17 +71,19 @@ export async function GET(request: Request, { params }: { params: { id: string }
  * 
  * Body: { title?: string, description?: string, isFree?: boolean, ... }
  */
-export async function PUT(request: Request, { params }: { params: { id: string } }) {
+export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { id } = params;
+    const { id } = await params;
     const body = await request.json();
     const db = await ensureDb();
 
     const updates: any = {};
+    if (body.gradeId !== undefined) updates.gradeId = body.gradeId;
     if (body.title !== undefined) updates.title = body.title;
     if (body.description !== undefined) updates.description = body.description;
     if (body.coverUrl !== undefined) updates.coverUrl = body.coverUrl;
     if (body.videoUrl !== undefined) updates.videoUrl = body.videoUrl;
+    if (body.classroomId !== undefined) updates.classroomId = body.classroomId;
     if (body.duration !== undefined) updates.duration = body.duration;
     if (body.isActive !== undefined) updates.isActive = body.isActive;
     if (body.isFree !== undefined) updates.isFree = body.isFree;
@@ -72,6 +92,9 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     await db.update(courses)
       .set(updates)
       .where(eq(courses.id, id));
+
+    // Save database to file
+    saveDatabase();
 
     return NextResponse.json({
       success: true,
@@ -90,13 +113,16 @@ export async function PUT(request: Request, { params }: { params: { id: string }
  * DELETE /api/admin/courses/{id}
  * Delete a course
  */
-export async function DELETE(request: Request, { params }: { params: { id: string } }) {
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { id } = params;
+    const { id } = await params;
     const db = await ensureDb();
 
     await db.delete(courses)
       .where(eq(courses.id, id));
+
+    // Save database to file
+    saveDatabase();
 
     return NextResponse.json({
       success: true,

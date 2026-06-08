@@ -45,9 +45,12 @@ export async function GET(request: Request) {
           .from(coursePrerequisites)
           .where(eq(coursePrerequisites.courseId, course.id));
         
+        const prerequisiteIds = prereqs.map(p => p.prerequisiteId);
+        console.log('Course:', course.title, 'prerequisites from DB:', prerequisiteIds);
+        
         return {
           ...course,
-          prerequisites: prereqs.map(p => p.prerequisiteId),
+          prerequisites: prerequisiteIds,
         };
       })
     );

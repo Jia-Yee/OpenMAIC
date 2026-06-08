@@ -12,6 +12,39 @@ import { createLogger } from '@/lib/logger';
 
 const log = createLogger('ImportClassroom');
 
+// Sync newly imported classroom to server
+async function syncImportedClassroomToServer(
+  stageId: string,
+  stage: any,
+  scenes: any[]
+) {
+  try {
+    const response = await fetch('/api/classrooms/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: stageId,
+        name: stage.name || 'Imported Classroom',
+        description: stage.description,
+        sceneCount: scenes.length,
+        data: {
+          stage,
+          scenes,
+        },
+      }),
+    });
+
+    const result = await response.json();
+    if (result.success) {
+      log.info(`Successfully synced imported classroom: ${stageId}`);
+    } else {
+      log.warn(`Failed to sync imported classroom: ${result.message}`);
+    }
+  } catch (error) {
+    log.warn(`Server sync failed for imported classroom ${stageId}:`, error);
+  }
+}
+
 export type ImportPhase =
   | 'idle'
   | 'parsing'
@@ -219,7 +252,23 @@ export function useImportClassroom(onSuccess?: () => void) {
         });
         await db.scenes.bulkPut(sceneRecords);
 
-        // 6. Done
+        // 6. Sync to server
+        await syncImportedClassroomToServer(
+          newStageId,
+          {
+            id: newStageId,
+            name: manifest.stage.name || 'Imported Classroom',
+            description: manifest.stage.description,
+            languageDirective: manifest.stage.language,
+            style: manifest.stage.style,
+            createdAt: manifest.stage.createdAt || now,
+            updatedAt: now,
+            agentIds: newAgentIds.length > 0 ? newAgentIds : undefined,
+          },
+          sceneRecords
+        );
+
+        // 7. Done
         setPhase('done');
         toast.success(t('import.success'), { id: toastId });
         onSuccess?.();

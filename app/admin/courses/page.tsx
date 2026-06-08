@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { db } from '@/lib/utils/database';
 
 interface Course {
   id: string;
@@ -9,6 +10,7 @@ interface Course {
   description?: string;
   coverUrl?: string;
   videoUrl?: string;
+  classroomId?: string;
   duration?: number;
   sortOrder: number;
   semester?: string;
@@ -27,10 +29,21 @@ interface Grade {
   textbookId?: string;
 }
 
+interface Classroom {
+  id: string;
+  name: string;
+  description: string;
+  sceneCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export default function CoursesPage() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [filteredCourses, setFilteredCourses] = useState<Course[]>([]);
+  const [classrooms, setClassrooms] = useState<Classroom[]>([]);
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
   const [selectedGrade, setSelectedGrade] = useState<string>('');
   const [filterSubject, setFilterSubject] = useState<string>('');
   const [filterStatus, setFilterStatus] = useState<string>('');
@@ -42,13 +55,28 @@ export default function CoursesPage() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
+  const [selectedClassroom, setSelectedClassroom] = useState<Classroom | null>(null);
+  const [activeTab, setActiveTab] = useState<'courses' | 'classrooms'>('courses');
+
+  // 从年级中提取唯一的年级名称（去掉上下册）
+  const getGradeDisplayName = (name: string) => {
+    return name.replace('上册', '').replace('下册', '').replace('全册', '');
+  };
+
+  const uniqueGrades = [...new Map(
+    grades.map(g => [getGradeDisplayName(g.name), g.name])
+  ).entries()].map(([displayName, originalName]) => ({
+    displayName,
+    grades: grades.filter(g => getGradeDisplayName(g.name) === displayName)
+  }));
 
   const [addForm, setAddForm] = useState({
-    gradeId: '',
+    selectedGradeDisplay: '',
     title: '',
     description: '',
     coverUrl: '',
     videoUrl: '',
+    classroomId: '',
     duration: '',
     sortOrder: '0',
     semester: 'full',
@@ -56,10 +84,12 @@ export default function CoursesPage() {
   });
 
   const [editForm, setEditForm] = useState({
+    selectedGradeDisplay: '',
     title: '',
     description: '',
     coverUrl: '',
     videoUrl: '',
+    classroomId: '',
     duration: '',
     sortOrder: '0',
     semester: 'full',
@@ -69,6 +99,7 @@ export default function CoursesPage() {
   useEffect(() => {
     fetchGrades();
     fetchCourses();
+    fetchClassrooms();
   }, []);
 
   useEffect(() => {
@@ -110,6 +141,16 @@ export default function CoursesPage() {
     }
   };
 
+  const fetchClassrooms = async () => {
+    try {
+      const res = await fetch('/api/admin/classrooms');
+      const data = await res.json();
+      setClassrooms(data.classrooms || []);
+    } catch (error) {
+      console.error('Error fetching classrooms:', error);
+    }
+  };
+
   const filterCourses = () => {
     let filtered = [...courses];
 
@@ -122,7 +163,11 @@ export default function CoursesPage() {
     }
 
     if (selectedGrade) {
-      filtered = filtered.filter(course => course.gradeId === selectedGrade);
+      // 根据年级名称筛选（匹配所有上册和下册）
+      filtered = filtered.filter(course => {
+        const courseGradeDisplay = getGradeDisplayName(course.gradeName || '');
+        return courseGradeDisplay === selectedGrade;
+      });
     }
 
     if (filterSubject) {
@@ -144,13 +189,56 @@ export default function CoursesPage() {
     setFilteredCourses(filtered);
   };
 
+  const handleSyncAllClassrooms = async () => {
+    try {
+      setSyncing(true);
+      const stages = await db.stages.orderBy('updatedAt').reverse().toArray();
+      const classroomData = await Promise.all(
+        stages.map(async (stage) => {
+          const sceneRecords = await db.scenes.where('stageId').equals(stage.id).toArray();
+          return {
+            id: stage.id,
+            name: stage.name,
+            description: stage.description,
+            sceneCount: sceneRecords.length,
+            data: {
+              stage: stage,
+              scenes: sceneRecords,
+            },
+          };
+        })
+      );
+
+      const res = await fetch('/api/admin/classrooms/sync-all', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ classrooms: classroomData }),
+      });
+
+      const result = await res.json();
+      if (result.success) {
+        alert(`已同步 ${result.synced} 个课堂到服务器！`);
+        fetchClassrooms();
+      } else {
+        alert('同步失败：' + (result.error || '未知错误'));
+      }
+    } catch (error) {
+      console.error('Error syncing classrooms:', error);
+      alert('同步失败');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const handleAddClick = () => {
+    const firstGradeDisplay = uniqueGrades[0]?.displayName || '';
     setAddForm({
-      gradeId: grades[0]?.id || '',
+      selectedGradeDisplay: firstGradeDisplay,
       title: '',
       description: '',
       coverUrl: '',
       videoUrl: '',
+      classroomId: '',
       duration: '',
       sortOrder: '0',
       semester: 'full',
@@ -159,9 +247,46 @@ export default function CoursesPage() {
     setShowAddModal(true);
   };
 
+  const handleCreateCourseFromClassroom = (classroom: Classroom) => {
+    const firstGradeDisplay = uniqueGrades[0]?.displayName || '';
+    setSelectedClassroom(classroom);
+    setAddForm({
+      selectedGradeDisplay: firstGradeDisplay,
+      title: classroom.name,
+      description: classroom.description || '',
+      coverUrl: '',
+      videoUrl: '',
+      classroomId: classroom.id,
+      duration: '',
+      sortOrder: '0',
+      semester: 'full',
+      isFree: false,
+    });
+    setShowAddModal(true);
+  };
+
+  // 根据年级显示名称和上下册获取真实的 gradeId
+  const getGradeIdFromDisplay = (gradeDisplay: string, semester: string): string => {
+    const matchingGrade = uniqueGrades.find(g => g.displayName === gradeDisplay);
+    if (!matchingGrade) return '';
+    
+    if (semester === 'first') {
+      return matchingGrade.grades.find(g => g.name.includes('上册'))?.id || '';
+    } else if (semester === 'second') {
+      return matchingGrade.grades.find(g => g.name.includes('下册'))?.id || '';
+    }
+    return matchingGrade.grades[0]?.id || '';
+  };
+
   const handleAddCourse = async () => {
-    if (!addForm.gradeId || !addForm.title) {
+    if (!addForm.selectedGradeDisplay || !addForm.title) {
       alert('请填写完整信息');
+      return;
+    }
+
+    const gradeId = getGradeIdFromDisplay(addForm.selectedGradeDisplay, addForm.semester);
+    if (!gradeId) {
+      alert('请选择年级');
       return;
     }
 
@@ -170,9 +295,14 @@ export default function CoursesPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...addForm,
+          gradeId,
+          title: addForm.title,
+          description: addForm.description,
+          semester: addForm.semester,
+          isFree: addForm.isFree,
           duration: addForm.duration ? parseInt(addForm.duration) : 0,
           sortOrder: addForm.sortOrder ? parseInt(addForm.sortOrder) : 0,
+          classroomId: addForm.classroomId,
         }),
       });
 
@@ -193,10 +323,12 @@ export default function CoursesPage() {
   const handleEditClick = (course: Course) => {
     setSelectedCourse(course);
     setEditForm({
+      selectedGradeDisplay: getGradeDisplayName(course.gradeName || ''),
       title: course.title || '',
       description: course.description || '',
       coverUrl: course.coverUrl || '',
       videoUrl: course.videoUrl || '',
+      classroomId: course.classroomId || '',
       duration: course.duration?.toString() || '',
       sortOrder: course.sortOrder?.toString() || '0',
       semester: course.semester || 'full',
@@ -208,14 +340,25 @@ export default function CoursesPage() {
   const handleUpdateCourse = async () => {
     if (!selectedCourse) return;
 
+    const gradeId = getGradeIdFromDisplay(editForm.selectedGradeDisplay, editForm.semester);
+    if (!gradeId) {
+      alert('请选择年级');
+      return;
+    }
+
     try {
       const res = await fetch(`/api/admin/courses/${selectedCourse.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...editForm,
+          gradeId,
+          title: editForm.title,
+          description: editForm.description,
+          semester: editForm.semester,
+          isFree: editForm.isFree,
           duration: editForm.duration ? parseInt(editForm.duration) : 0,
           sortOrder: editForm.sortOrder ? parseInt(editForm.sortOrder) : 0,
+          classroomId: editForm.classroomId,
         }),
       });
 
@@ -307,13 +450,25 @@ export default function CoursesPage() {
         </div>
         <div className="flex gap-2">
           <button
-            onClick={handleAddClick}
-            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+            onClick={handleSyncAllClassrooms}
+            disabled={syncing}
+            className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            添加课程
+            {syncing ? '同步中...' : '同步课堂'}
           </button>
+          {activeTab === 'courses' && (
+            <button
+              onClick={handleAddClick}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+            >
+              添加课程
+            </button>
+          )}
           <button
-            onClick={fetchCourses}
+            onClick={() => {
+              fetchCourses();
+              fetchClassrooms();
+            }}
             className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition"
           >
             刷新
@@ -321,204 +476,334 @@ export default function CoursesPage() {
         </div>
       </div>
 
-      {/* Search and Filters */}
-      <div className="bg-white rounded-xl shadow-sm p-4 space-y-4">
-        <div className="relative">
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="搜索课程名称..."
-            className="w-full px-4 py-3 pl-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-          />
-          <svg className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
-        </div>
-
-        <div className="flex flex-wrap gap-4">
-          <div className="flex items-center gap-2">
-            <label className="text-sm font-medium text-gray-600">年级:</label>
-            <select
-              value={selectedGrade}
-              onChange={(e) => setSelectedGrade(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-            >
-              <option value="">全部年级</option>
-              {grades.map((grade) => (
-                <option key={grade.id} value={grade.id}>
-                  {grade.name} ({grade.subjectName})
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="flex items-center gap-2">
-            <label className="text-sm font-medium text-gray-600">科目:</label>
-            <select
-              value={filterSubject}
-              onChange={(e) => setFilterSubject(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-            >
-              <option value="">全部科目</option>
-              {subjects.map((subject) => (
-                <option key={subject} value={subject}>
-                  {subject}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="flex items-center gap-2">
-            <label className="text-sm font-medium text-gray-600">上下册:</label>
-            <select
-              value={filterSemester}
-              onChange={(e) => setFilterSemester(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-            >
-              <option value="">全部</option>
-              <option value="first">上册</option>
-              <option value="second">下册</option>
-              <option value="full">全册</option>
-            </select>
-          </div>
-          <div className="flex items-center gap-2">
-            <label className="text-sm font-medium text-gray-600">状态:</label>
-            <select
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-            >
-              <option value="">全部状态</option>
-              <option value="free">免费</option>
-              <option value="paid">付费</option>
-            </select>
-          </div>
-        </div>
-
-        <p className="text-sm text-gray-500">
-          共 {filteredCourses.length} 个课程
-        </p>
+      {/* Tabs */}
+      <div className="flex gap-2 border-b border-gray-200">
+        <button
+          onClick={() => setActiveTab('courses')}
+          className={`px-4 py-2 font-medium transition ${
+            activeTab === 'courses'
+              ? 'text-indigo-600 border-b-2 border-indigo-600'
+              : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          课程列表
+        </button>
+        <button
+          onClick={() => setActiveTab('classrooms')}
+          className={`px-4 py-2 font-medium transition ${
+            activeTab === 'classrooms'
+              ? 'text-indigo-600 border-b-2 border-indigo-600'
+              : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          课堂管理
+        </button>
       </div>
 
-      {/* Course Table */}
-      <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-        <table className="w-full">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">课程信息</th>
-              <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">年级/科目</th>
-              <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">上下册</th>
-              <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">状态</th>
-              <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">操作</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {loading ? (
-              <tr>
-                <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto mb-3"></div>
-                  加载中...
-                </td>
-              </tr>
-            ) : filteredCourses.length === 0 ? (
-              <tr>
-                <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
-                  暂无课程
-                </td>
-              </tr>
-            ) : (
-              filteredCourses.map((course) => (
-                <tr key={course.id} className="hover:bg-gray-50 transition">
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      {course.coverUrl ? (
-                        <img src={course.coverUrl} alt={course.title} className="w-12 h-12 rounded-lg object-cover" />
-                      ) : (
-                        <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center text-gray-400">
-                          📄
-                        </div>
-                      )}
-                      <div>
-                        <p className="font-medium text-gray-800">{course.title}</p>
-                        <p className="text-sm text-gray-500 max-w-xs truncate">{course.description}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <p className="font-medium text-gray-800">{course.gradeName}</p>
-                    <p className="text-sm text-gray-500">{course.subjectName}</p>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-600">
-                    {getSemesterName(course.semester)}
-                  </td>
-                  <td className="px-6 py-4">
-                    <span
-                      className={`px-3 py-1 rounded-full text-sm font-medium ${
-                        course.isFree
-                          ? 'bg-green-100 text-green-700'
-                          : 'bg-orange-100 text-orange-700'
-                      }`}
-                    >
-                      {course.isFree ? '免费' : '付费'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => handleToggleFree(course)}
-                        className={`px-3 py-1 rounded-lg transition text-sm ${
-                          course.isFree
-                            ? 'bg-orange-100 text-orange-700 hover:bg-orange-200'
-                            : 'bg-green-100 text-green-700 hover:bg-green-200'
-                        }`}
-                      >
-                        {course.isFree ? '付费' : '免费'}
-                      </button>
-                      <button
-                        onClick={() => handleEditClick(course)}
-                        className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition text-sm"
-                      >
-                        编辑
-                      </button>
-                      <button
-                        onClick={() => handleDeleteClick(course)}
-                        className="px-3 py-1 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition text-sm"
-                      >
-                        删除
-                      </button>
-                    </div>
-                  </td>
+      {activeTab === 'courses' ? (
+        <>
+          {/* Search and Filters */}
+          <div className="bg-white rounded-xl shadow-sm p-4 space-y-4">
+            <div className="relative">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="搜索课程名称..."
+                className="w-full px-4 py-3 pl-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              />
+              <svg className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
+
+            <div className="flex flex-wrap gap-4">
+              <div className="flex items-center gap-2">
+                <label className="text-sm font-medium text-gray-600">年级:</label>
+                <select
+                  value={selectedGrade}
+                  onChange={(e) => setSelectedGrade(e.target.value)}
+                  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                >
+                  <option value="">全部年级</option>
+                  {uniqueGrades.map((item) => (
+                    <option key={item.displayName} value={item.displayName}>
+                      {item.displayName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-sm font-medium text-gray-600">科目:</label>
+                <select
+                  value={filterSubject}
+                  onChange={(e) => setFilterSubject(e.target.value)}
+                  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                >
+                  <option value="">全部科目</option>
+                  {subjects.map((subject) => (
+                    <option key={subject} value={subject}>
+                      {subject}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-sm font-medium text-gray-600">上下册:</label>
+                <select
+                  value={filterSemester}
+                  onChange={(e) => setFilterSemester(e.target.value)}
+                  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                >
+                  <option value="">全部</option>
+                  <option value="first">上册</option>
+                  <option value="second">下册</option>
+                  <option value="full">全册</option>
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-sm font-medium text-gray-600">状态:</label>
+                <select
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                >
+                  <option value="">全部状态</option>
+                  <option value="free">免费</option>
+                  <option value="paid">付费</option>
+                </select>
+              </div>
+            </div>
+
+            <p className="text-sm text-gray-500">
+              共 {filteredCourses.length} 个课程
+            </p>
+          </div>
+
+          {/* Course Table */}
+          <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+            <table className="w-full">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">课程信息</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">年级/科目</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">上下册</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">关联课堂</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">状态</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">操作</th>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {loading ? (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto mb-3"></div>
+                      加载中...
+                    </td>
+                  </tr>
+                ) : filteredCourses.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
+                      暂无课程
+                    </td>
+                  </tr>
+                ) : (
+                  filteredCourses.map((course) => (
+                    <tr key={course.id} className="hover:bg-gray-50 transition">
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          {course.coverUrl ? (
+                            <img src={course.coverUrl} alt={course.title} className="w-12 h-12 rounded-lg object-cover" />
+                          ) : (
+                            <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center text-gray-400">
+                              📄
+                            </div>
+                          )}
+                          <div>
+                            <p className="font-medium text-gray-800">{course.title}</p>
+                            <p className="text-sm text-gray-500 max-w-xs truncate">{course.description}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <p className="font-medium text-gray-800">{course.gradeName}</p>
+                        <p className="text-sm text-gray-500">{course.subjectName}</p>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-600">
+                        {getSemesterName(course.semester)}
+                      </td>
+                      <td className="px-6 py-4">
+                        {course.classroomId ? (
+                          (() => {
+                            const classroom = classrooms.find((c) => c.id === course.classroomId);
+                            return classroom ? (
+                              <a
+                                href={`/classroom/${classroom.id}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-sm text-indigo-600 hover:text-indigo-800 hover:underline truncate max-w-xs"
+                              >
+                                {classroom.name}
+                              </a>
+                            ) : (
+                              <span className="text-sm text-gray-400">课堂不存在</span>
+                            );
+                          })()
+                        ) : (
+                          <span className="text-sm text-gray-400">未关联</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        <span
+                          className={`px-3 py-1 rounded-full text-sm font-medium ${
+                            course.isFree
+                              ? 'bg-green-100 text-green-700'
+                              : 'bg-orange-100 text-orange-700'
+                          }`}
+                        >
+                          {course.isFree ? '免费' : '付费'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleToggleFree(course)}
+                            className={`px-3 py-1 rounded-lg transition text-sm ${
+                              course.isFree
+                                ? 'bg-orange-100 text-orange-700 hover:bg-orange-200'
+                                : 'bg-green-100 text-green-700 hover:bg-green-200'
+                            }`}
+                          >
+                            {course.isFree ? '付费' : '免费'}
+                          </button>
+                          <button
+                            onClick={() => handleEditClick(course)}
+                            className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition text-sm"
+                          >
+                            编辑
+                          </button>
+                          <button
+                            onClick={() => handleDeleteClick(course)}
+                            className="px-3 py-1 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition text-sm"
+                          >
+                            删除
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl p-4 shadow-sm">
-          <p className="text-sm text-gray-500">课程总数</p>
-          <p className="text-2xl font-bold text-gray-800">{courses.length}</p>
+          {/* Stats */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="bg-white rounded-xl p-4 shadow-sm">
+              <p className="text-sm text-gray-500">课程总数</p>
+              <p className="text-2xl font-bold text-gray-800">{courses.length}</p>
+            </div>
+            <div className="bg-white rounded-xl p-4 shadow-sm">
+              <p className="text-sm text-gray-500">免费课程</p>
+              <p className="text-2xl font-bold text-green-600">
+                {courses.filter((c) => c.isFree).length}
+              </p>
+            </div>
+            <div className="bg-white rounded-xl p-4 shadow-sm">
+              <p className="text-sm text-gray-500">付费课程</p>
+              <p className="text-2xl font-bold text-orange-600">
+                {courses.filter((c) => !c.isFree).length}
+              </p>
+            </div>
+            <div className="bg-white rounded-xl p-4 shadow-sm">
+              <p className="text-sm text-gray-500">筛选结果</p>
+              <p className="text-2xl font-bold text-indigo-600">
+                {filteredCourses.length}
+              </p>
+            </div>
+          </div>
+        </>
+      ) : (
+        /* Classroom Management */
+        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+          <div className="p-4 border-b border-gray-200">
+            <h3 className="text-lg font-semibold text-gray-800">课堂列表</h3>
+            <p className="text-sm text-gray-500 mt-1">从这里可以直接创建课程</p>
+          </div>
+          {loading ? (
+            <div className="p-12 text-center text-gray-500">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto mb-3"></div>
+              加载中...
+            </div>
+          ) : classrooms.length === 0 ? (
+            <div className="p-12 text-center text-gray-500">
+              暂无课堂，请先在首页创建课堂
+            </div>
+          ) : (
+            <table className="w-full">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">课堂信息</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">场景数</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">更新时间</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">已关联</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">操作</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {classrooms.map((classroom) => {
+                  const isLinked = courses.some((c) => c.classroomId === classroom.id);
+                  return (
+                    <tr key={classroom.id} className="hover:bg-gray-50 transition">
+                      <td className="px-6 py-4">
+                        <div>
+                          <p className="font-medium text-gray-800">{classroom.name}</p>
+                          <p className="text-sm text-gray-500 max-w-xs truncate">{classroom.description}</p>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-600">
+                        {classroom.sceneCount}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-600">
+                        {new Date(classroom.updatedAt).toLocaleString('zh-CN')}
+                      </td>
+                      <td className="px-6 py-4">
+                        <span
+                          className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            isLinked
+                              ? 'bg-green-100 text-green-700'
+                              : 'bg-gray-100 text-gray-600'
+                          }`}
+                        >
+                          {isLinked ? '已关联' : '未关联'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex gap-2">
+                          <a
+                            href={`/classroom/${classroom.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-3 py-1 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition text-sm"
+                          >
+                            查看
+                          </a>
+                          <button
+                            onClick={() => handleCreateCourseFromClassroom(classroom)}
+                            className="px-3 py-1 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition text-sm"
+                          >
+                            创建课程
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
         </div>
-        <div className="bg-white rounded-xl p-4 shadow-sm">
-          <p className="text-sm text-gray-500">免费课程</p>
-          <p className="text-2xl font-bold text-green-600">
-            {courses.filter((c) => c.isFree).length}
-          </p>
-        </div>
-        <div className="bg-white rounded-xl p-4 shadow-sm">
-          <p className="text-sm text-gray-500">付费课程</p>
-          <p className="text-2xl font-bold text-orange-600">
-            {courses.filter((c) => !c.isFree).length}
-          </p>
-        </div>
-        <div className="bg-white rounded-xl p-4 shadow-sm">
-          <p className="text-sm text-gray-500">筛选结果</p>
-          <p className="text-2xl font-bold text-indigo-600">
-            {filteredCourses.length}
-          </p>
-        </div>
-      </div>
+      )}
 
       {/* Add Course Modal */}
       {showAddModal && (
@@ -531,13 +816,13 @@ export default function CoursesPage() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">所属年级 *</label>
                 <select
-                  value={addForm.gradeId}
-                  onChange={(e) => setAddForm({ ...addForm, gradeId: e.target.value })}
+                  value={addForm.selectedGradeDisplay}
+                  onChange={(e) => setAddForm({ ...addForm, selectedGradeDisplay: e.target.value })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                 >
-                  {grades.map((grade) => (
-                    <option key={grade.id} value={grade.id}>
-                      {grade.name} ({grade.subjectName})
+                  {uniqueGrades.map((item) => (
+                    <option key={item.displayName} value={item.displayName}>
+                      {item.displayName}
                     </option>
                   ))}
                 </select>
@@ -585,6 +870,23 @@ export default function CoursesPage() {
                 </div>
               </div>
               <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">关联课堂</label>
+                <select
+                  value={addForm.classroomId}
+                  onChange={(e) => setAddForm({ ...addForm, classroomId: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                >
+                  <option value="">请选择要关联的课堂</option>
+                  {classrooms
+                    .filter(c => !c.id.startsWith('course-') && !courses.some(course => course.classroomId === c.id))
+                    .map((classroom) => (
+                      <option key={classroom.id} value={classroom.id}>
+                        {classroom.name} ({classroom.sceneCount}个场景)
+                      </option>
+                    ))}
+                </select>
+              </div>
+              <div>
                 <label className="flex items-center gap-2">
                   <input
                     type="checkbox"
@@ -620,9 +922,22 @@ export default function CoursesPage() {
           <div className="bg-white rounded-xl w-full max-w-lg max-h-[90vh] overflow-hidden">
             <div className="p-6 border-b border-gray-100">
               <h3 className="text-lg font-semibold text-gray-800">编辑课程</h3>
-              <p className="text-sm text-gray-500 mt-1">年级: {selectedCourse.gradeName}</p>
             </div>
             <div className="p-6 overflow-y-auto max-h-[60vh] space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">所属年级 *</label>
+                <select
+                  value={editForm.selectedGradeDisplay}
+                  onChange={(e) => setEditForm({ ...editForm, selectedGradeDisplay: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                >
+                  {uniqueGrades.map((item) => (
+                    <option key={item.displayName} value={item.displayName}>
+                      {item.displayName}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">课程名称 *</label>
                 <input
@@ -663,6 +978,23 @@ export default function CoursesPage() {
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                   />
                 </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">关联课堂</label>
+                <select
+                  value={editForm.classroomId}
+                  onChange={(e) => setEditForm({ ...editForm, classroomId: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                >
+                  <option value="">请选择要关联的课堂</option>
+                  {classrooms
+                    .filter(c => !c.id.startsWith('course-') && (!courses.some(course => course.classroomId === c.id && course.id !== selectedCourse?.id) || c.id === editForm.classroomId))
+                    .map((classroom) => (
+                      <option key={classroom.id} value={classroom.id}>
+                        {classroom.name} ({classroom.sceneCount}个场景)
+                      </option>
+                    ))}
+                </select>
               </div>
               <div>
                 <label className="flex items-center gap-2">

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 
 const navItems = [
@@ -10,10 +10,72 @@ const navItems = [
   { label: '课程管理', href: '/admin/courses', icon: '📚' },
 ];
 
+interface AdminUser {
+  username: string;
+  role: string;
+  permissions: string[];
+}
+
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [adminUser, setAdminUser] = useState<AdminUser | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    checkAuth();
+  }, [pathname]);
+
+  const checkAuth = () => {
+    const token = localStorage.getItem('admin_token');
+    const userData = localStorage.getItem('admin_user');
+    
+    if (token && userData) {
+      try {
+        const parsedUser = JSON.parse(userData);
+        setAdminUser(parsedUser);
+        setIsLoggedIn(true);
+      } catch (e) {
+        console.error('Failed to parse admin user data:', e);
+        logout();
+      }
+    }
+    
+    if (!isLoggedIn && pathname !== '/admin/login') {
+      router.push('/admin/login');
+    }
+    
+    setLoading(false);
+  };
+
+  const logout = () => {
+    localStorage.removeItem('admin_token');
+    localStorage.removeItem('admin_user');
+    setAdminUser(null);
+    setIsLoggedIn(false);
+    router.push('/admin/login');
+  };
+
+  // Show loading while checking auth
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="text-indigo-600">加载中...</div>
+      </div>
+    );
+  }
+
+  // Show login page if not logged in
+  if (!isLoggedIn && pathname === '/admin/login') {
+    return <>{children}</>;
+  }
+
+  // Redirect to login if not authenticated
+  if (!isLoggedIn) {
+    return null;
+  }
 
   return (
     <div className="flex h-screen bg-gray-100">
@@ -84,10 +146,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <p className="text-sm text-gray-500">欢迎来到三叶草管理后台</p>
             </div>
             <div className="flex items-center gap-4">
-              <div className="text-sm text-gray-600">管理员</div>
+              <div className="text-sm text-gray-600">{adminUser?.username || '管理员'}</div>
               <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600 font-bold">
-                A
+                {adminUser?.username?.[0] || 'A'}
               </div>
+              <button
+                onClick={logout}
+                className="px-4 py-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition text-sm font-medium"
+              >
+                退出登录
+              </button>
             </div>
           </div>
         </header>

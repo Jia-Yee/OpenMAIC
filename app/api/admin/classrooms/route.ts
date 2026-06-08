@@ -8,16 +8,11 @@ import { listClassroomsFromServer } from '@/lib/server/classroom-server-db';
 export async function GET() {
   try {
     const classrooms = await listClassroomsFromServer();
-
-    return NextResponse.json({
-      success: true,
-      classrooms,
-      total: classrooms.length,
-    });
+    return NextResponse.json({ classrooms });
   } catch (error) {
     console.error('Error fetching classrooms:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch classrooms', success: false },
+      { error: 'Failed to fetch classrooms' },
       { status: 500 }
     );
   }

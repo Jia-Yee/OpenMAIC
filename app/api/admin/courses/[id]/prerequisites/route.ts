@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getDb, initDb } from '@/lib/db';
+import { getDb, initDb, autoSaveDb } from '@/lib/db';
 import { coursePrerequisites, courses } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
 
@@ -17,9 +17,9 @@ async function ensureDb() {
  * GET /api/admin/courses/{id}/prerequisites
  * Get prerequisites for a course
  */
-export async function GET(request: Request, { params }: { params: { id: string } }) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { id } = params;
+    const { id } = await params;
     const db = await ensureDb();
 
     const prereqs = await db.select({
@@ -50,9 +50,9 @@ export async function GET(request: Request, { params }: { params: { id: string }
  * 
  * Body: { prerequisiteIds: string[] }
  */
-export async function POST(request: Request, { params }: { params: { id: string } }) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { id } = params;
+    const { id } = await params;
     const body = await request.json();
     const { prerequisiteIds } = body;
 
@@ -93,6 +93,9 @@ export async function POST(request: Request, { params }: { params: { id: string 
       }
     }
 
+    // Save database to disk
+    autoSaveDb();
+
     return NextResponse.json({
       success: true,
       message: `Added ${addedCount} prerequisites`,
@@ -111,9 +114,9 @@ export async function POST(request: Request, { params }: { params: { id: string 
  * DELETE /api/admin/courses/{id}/prerequisites?prerequisiteId=xxx
  * Remove a prerequisite from a course
  */
-export async function DELETE(request: Request, { params }: { params: { id: string } }) {
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { id } = params;
+    const { id } = await params;
     const url = new URL(request.url);
     const prerequisiteId = url.searchParams.get('prerequisiteId');
 
@@ -131,6 +134,9 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
         eq(coursePrerequisites.courseId, id),
         eq(coursePrerequisites.prerequisiteId, prerequisiteId)
       ));
+
+    // Save database to disk
+    autoSaveDb();
 
     return NextResponse.json({
       success: true,
