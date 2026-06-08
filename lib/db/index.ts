@@ -11,6 +11,13 @@ let sql: SqlJsStatic | null = null;
 let db: ReturnType<typeof drizzle> | null = null;
 let sqliteDb: any = null; // 保存底层 SQLite 数据库引用
 
+export function autoSaveDb() {
+  if (sqliteDb && existsSync(dirname(dbPath))) {
+    const data = sqliteDb.export();
+    writeFileSync(dbPath, Buffer.from(data));
+  }
+}
+
 export async function initDb() {
   if (db) return db;
 
@@ -481,14 +488,6 @@ export async function initDb() {
       writeFileSync(dbPath, Buffer.from(data));
     }
   };
-
-  // Auto-save after each write operation
-  export function autoSaveDb() {
-    if (sqliteDb && existsSync(dirname(dbPath))) {
-      const data = sqliteDb.export();
-      writeFileSync(dbPath, Buffer.from(data));
-    }
-  }
 
   process.on('exit', saveDb);
   process.on('SIGINT', () => {
