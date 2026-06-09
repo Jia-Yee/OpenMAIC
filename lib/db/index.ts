@@ -219,6 +219,18 @@ async function ensurePgTables(client: any) {
         )
       `;
       
+      await client`
+        CREATE TABLE classrooms (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          description TEXT,
+          scene_count INTEGER DEFAULT 0,
+          data TEXT,
+          created_at INTEGER,
+          updated_at INTEGER
+        )
+      `;
+      
       await client`CREATE INDEX users_openid_idx ON users(openid)`;
       await client`CREATE INDEX textbooks_subject_idx ON textbooks(subject_id)`;
       await client`CREATE INDEX grades_textbook_idx ON grades(textbook_id)`;
@@ -377,6 +389,18 @@ async function ensurePgTablesVercel(sql: any) {
           expires_at INTEGER NOT NULL,
           created_at INTEGER,
           confirmed_at INTEGER
+        )
+      `;
+      
+      await sql`
+        CREATE TABLE classrooms (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          description TEXT,
+          scene_count INTEGER DEFAULT 0,
+          data TEXT,
+          created_at INTEGER,
+          updated_at INTEGER
         )
       `;
       

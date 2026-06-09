@@ -229,6 +229,18 @@ export const wechatSessions = pgTable('wechat_sessions', {
   statusIdx: index('wechat_sessions_status_idx').on(table.status),
 }));
 
+export const classrooms = pgTable('classrooms', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  description: text('description'),
+  sceneCount: integer('scene_count').default(0),
+  data: text('data'),
+  createdAt: integer('created_at').$defaultFn(() => Math.floor(Date.now() / 1000)),
+  updatedAt: integer('updated_at').$defaultFn(() => Math.floor(Date.now() / 1000)),
+}, (table) => ({
+  idx: index('classrooms_idx').on(table.id),
+}));
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Subject = typeof subjects.$inferSelect;
@@ -242,5 +254,6 @@ export type Subscription = typeof subscriptions.$inferSelect;
 export type NewSubscription = typeof subscriptions.$inferInsert;
 export type WechatSession = typeof wechatSessions.$inferSelect;
 export type NewWechatSession = typeof wechatSessions.$inferInsert;
+export type Classroom = typeof classrooms.$inferSelect;
 
 export { eq, and, asc, desc, inArray, like, or, gt };

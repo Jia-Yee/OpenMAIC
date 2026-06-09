@@ -6,19 +6,38 @@ import type { Scene, Stage } from '@/lib/types/stage';
 export const CLASSROOMS_DIR = path.join(process.cwd(), 'data', 'classrooms');
 export const CLASSROOM_JOBS_DIR = path.join(process.cwd(), 'data', 'classroom-jobs');
 
+const isServerless = process.env.VERCEL || process.env.NODE_ENV === 'production';
+
 async function ensureDir(dir: string) {
+  if (isServerless) {
+    console.log('[ClassroomStorage] Skipping mkdir in serverless environment');
+    return;
+  }
   await fs.mkdir(dir, { recursive: true });
 }
 
 export async function ensureClassroomsDir() {
+  if (isServerless) {
+    console.log('[ClassroomStorage] Skipping ensureClassroomsDir in serverless environment');
+    return;
+  }
   await ensureDir(CLASSROOMS_DIR);
 }
 
 export async function ensureClassroomJobsDir() {
+  if (isServerless) {
+    console.log('[ClassroomStorage] Skipping ensureClassroomJobsDir in serverless environment');
+    return;
+  }
   await ensureDir(CLASSROOM_JOBS_DIR);
 }
 
 export async function writeJsonFileAtomic(filePath: string, data: unknown) {
+  if (isServerless) {
+    console.log('[ClassroomStorage] Skipping writeJsonFileAtomic in serverless environment');
+    return;
+  }
+  
   const dir = path.dirname(filePath);
   await ensureDir(dir);
 

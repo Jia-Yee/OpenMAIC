@@ -3,6 +3,9 @@
  *
  * Generates image/video files and TTS audio for a classroom,
  * writes them to disk, and returns serving URL mappings.
+ * 
+ * Note: In serverless environments like Vercel, file system writes are not allowed.
+ * This module will gracefully skip file operations in such environments.
  */
 
 import { promises as fs } from 'fs';
@@ -37,11 +40,17 @@ import { splitLongSpeechActions } from '@/lib/audio/tts-utils';
 
 const log = createLogger('ClassroomMedia');
 
+const isServerless = process.env.VERCEL || process.env.NODE_ENV === 'production';
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 async function ensureDir(dir: string) {
+  if (isServerless) {
+    log.info(`Skipping mkdir in serverless environment: ${dir}`);
+    return;
+  }
   await fs.mkdir(dir, { recursive: true });
 }
 
@@ -71,6 +80,11 @@ export async function generateMediaForClassroom(
   classroomId: string,
   baseUrl: string,
 ): Promise<Record<string, string>> {
+  if (isServerless) {
+    log.info('Skipping generateMediaForClassroom in serverless environment');
+    return {};
+  }
+
   const mediaDir = path.join(CLASSROOMS_DIR, classroomId, 'media');
   await ensureDir(mediaDir);
 
@@ -206,6 +220,11 @@ export async function generateTTSForClassroom(
   classroomId: string,
   baseUrl: string,
 ): Promise<void> {
+  if (isServerless) {
+    log.info('Skipping generateTTSForClassroom in serverless environment');
+    return;
+  }
+
   const audioDir = path.join(CLASSROOMS_DIR, classroomId, 'audio');
   await ensureDir(audioDir);
 

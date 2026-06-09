@@ -1,33 +1,23 @@
 /**
  * Server-side Classroom Storage
  *
- * Uses the file system to store classrooms as JSON files.
+ * Uses PostgreSQL database to store classrooms.
  * This allows multiple devices to access the same classrooms
  * when they are connected to the same server.
  */
 
-import { promises as fs } from 'fs';
-import path from 'path';
-
-export const CLASSROOMS_DIR = path.join(process.cwd(), 'data', 'classrooms');
-
-// Ensure the directory exists
-async function ensureDir(dir: string) {
-  await fs.mkdir(dir, { recursive: true });
-}
-
-export async function ensureClassroomsDir() {
-  await ensureDir(CLASSROOMS_DIR);
-}
+import { getDb } from '@/lib/db';
+import { classrooms, type Classroom } from '@/lib/db/schema';
+import { eq } from 'drizzle-orm';
 
 export interface PersistedClassroom {
   id: string;
   name: string;
   description?: string;
   sceneCount: number;
+  data: any;
   createdAt: number;
   updatedAt: number;
-  data: any; // Full classroom data (stage + scenes)
 }
 
 export interface ClassroomListItem {
@@ -40,7 +30,7 @@ export interface ClassroomListItem {
 }
 
 /**
- * Save a classroom to the server file system
+ * Save a classroom to the database
  */
 export async function saveClassroomToServer(classroom: {
   id: string;
@@ -49,20 +39,29 @@ export async function saveClassroomToServer(classroom: {
   sceneCount: number;
   data: any;
 }): Promise<void> {
-  await ensureClassroomsDir();
+  const db = await getDb();
+  const now = Math.floor(Date.now() / 1000);
 
-  const filePath = path.join(CLASSROOMS_DIR, `${classroom.id}.json`);
-  const content = {
-    ...classroom,
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  };
+  await db.insert(classrooms).values({
+    id: classroom.id,
+    name: classroom.name,
+    description: classroom.description,
+    sceneCount: classroom.sceneCount,
+    data: JSON.stringify(classroom.data),
+    createdAt: now,
+    updatedAt: now,
+  }).onConflictDoUpdate({
+    target: classrooms.id,
+    set: {
+      name: classroom.name,
+      description: classroom.description,
+      sceneCount: classroom.sceneCount,
+      data: JSON.stringify(classroom.data),
+      updatedAt: now,
+    },
+  });
 
-  const tempPath = `${filePath}.${Date.now()}.tmp`;
-  await fs.writeFile(tempPath, JSON.stringify(content, null, 2), 'utf-8');
-  await fs.rename(tempPath, filePath);
-
-  console.log(`[ServerDB] Saved classroom: ${classroom.id}`);
+  console.log(`[ServerDB] Saved classroom to database: ${classroom.id}`);
 }
 
 /**
@@ -75,111 +74,92 @@ export async function updateClassroomOnServer(classroom: {
   sceneCount?: number;
   data?: any;
 }): Promise<void> {
-  const filePath = path.join(CLASSROOMS_DIR, `${classroom.id}.json`);
+  const db = await getDb();
+  const now = Math.floor(Date.now() / 1000);
 
-  let existing: any = null;
-  try {
-    const content = await fs.readFile(filePath, 'utf-8');
-    existing = JSON.parse(content);
-  } catch (e) {
-    // File doesn't exist, create new
-    existing = {
-      id: classroom.id,
-      createdAt: Date.now(),
-    };
-  }
-
-  const updated = {
-    ...existing,
-    ...classroom,
-    updatedAt: Date.now(),
+  const updateData: Record<string, any> = {
+    updatedAt: now,
   };
 
-  const tempPath = `${filePath}.${Date.now()}.tmp`;
-  await fs.writeFile(tempPath, JSON.stringify(updated, null, 2), 'utf-8');
-  await fs.rename(tempPath, filePath);
+  if (classroom.name !== undefined) updateData.name = classroom.name;
+  if (classroom.description !== undefined) updateData.description = classroom.description;
+  if (classroom.sceneCount !== undefined) updateData.sceneCount = classroom.sceneCount;
+  if (classroom.data !== undefined) updateData.data = JSON.stringify(classroom.data);
 
-  console.log(`[ServerDB] Updated classroom: ${classroom.id}`);
+  await db.update(classrooms)
+    .set(updateData)
+    .where(eq(classrooms.id, classroom.id));
+
+  console.log(`[ServerDB] Updated classroom in database: ${classroom.id}`);
 }
 
 /**
- * Get a classroom from the server
+ * Get a classroom from the database
  */
 export async function getClassroomFromServer(id: string): Promise<PersistedClassroom | null> {
-  const filePath = path.join(CLASSROOMS_DIR, `${id}.json`);
+  const db = await getDb();
 
-  try {
-    const content = await fs.readFile(filePath, 'utf-8');
-    return JSON.parse(content);
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === 'ENOENT') {
-      return null;
-    }
-    throw e;
+  const result = await db.select()
+    .from(classrooms)
+    .where(eq(classrooms.id, id));
+
+  if (result.length === 0) {
+    return null;
   }
+
+  const row = result[0];
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    sceneCount: row.sceneCount || 0,
+    data: row.data ? JSON.parse(row.data) : null,
+    createdAt: row.createdAt || 0,
+    updatedAt: row.updatedAt || 0,
+  };
 }
 
 /**
- * Get all classrooms from the server (for listing)
+ * Get all classrooms from the database (for listing)
  */
 export async function listClassroomsFromServer(): Promise<ClassroomListItem[]> {
-  await ensureClassroomsDir();
+  const db = await getDb();
 
-  const files = await fs.readdir(CLASSROOMS_DIR);
-  const classrooms: ClassroomListItem[] = [];
+  const result = await db.select()
+    .from(classrooms)
+    .orderBy(classrooms.updatedAt);
 
-  for (const file of files) {
-    if (!file.endsWith('.json')) continue;
-
-    try {
-      const content = await fs.readFile(path.join(CLASSROOMS_DIR, file), 'utf-8');
-      const data = JSON.parse(content);
-
-      classrooms.push({
-        id: data.id,
-        name: data.name,
-        description: data.description || 'AI 生成的交互式课堂',
-        sceneCount: data.sceneCount || 0,
-        createdAt: new Date(data.createdAt).toISOString(),
-        updatedAt: new Date(data.updatedAt).toISOString(),
-      });
-    } catch (e) {
-      console.error(`[ServerDB] Failed to read classroom file ${file}:`, e);
-    }
-  }
-
-  // Sort by updatedAt descending
-  classrooms.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-
-  return classrooms;
+  return result.map((row: Classroom) => ({
+    id: row.id,
+    name: row.name,
+    description: row.description || 'AI 生成的交互式课堂',
+    sceneCount: row.sceneCount || 0,
+    createdAt: row.createdAt ? new Date(row.createdAt * 1000).toISOString() : new Date().toISOString(),
+    updatedAt: row.updatedAt ? new Date(row.updatedAt * 1000).toISOString() : new Date().toISOString(),
+  }));
 }
 
 /**
- * Delete a classroom from the server
+ * Delete a classroom from the database
  */
 export async function deleteClassroomFromServer(id: string): Promise<void> {
-  const filePath = path.join(CLASSROOMS_DIR, `${id}.json`);
+  const db = await getDb();
 
-  try {
-    await fs.unlink(filePath);
-    console.log(`[ServerDB] Deleted classroom: ${id}`);
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code !== 'ENOENT') {
-      throw e;
-    }
-  }
+  await db.delete(classrooms)
+    .where(eq(classrooms.id, id));
+
+  console.log(`[ServerDB] Deleted classroom from database: ${id}`);
 }
 
 /**
  * Check if a classroom exists on the server
  */
 export async function classroomExistsOnServer(id: string): Promise<boolean> {
-  const filePath = path.join(CLASSROOMS_DIR, `${id}.json`);
+  const db = await getDb();
 
-  try {
-    await fs.access(filePath);
-    return true;
-  } catch {
-    return false;
-  }
+  const result = await db.select({ id: classrooms.id })
+    .from(classrooms)
+    .where(eq(classrooms.id, id));
+
+  return result.length > 0;
 }
