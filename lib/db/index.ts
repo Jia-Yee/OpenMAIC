@@ -77,9 +77,10 @@ export async function initDb() {
 
 async function ensurePgTables(client: any) {
   try {
-    const queryResult = await client`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'subjects'`;
+    const subjectsResult = await client`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'subjects'`;
+    const classroomsResult = await client`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'classrooms'`;
     
-    if (!queryResult.length) {
+    if (!subjectsResult.length) {
       console.log('Creating PostgreSQL tables...');
       
       await client`
@@ -243,6 +244,22 @@ async function ensurePgTables(client: any) {
       
       await seedInitialData(client);
     }
+    
+    if (!classroomsResult.length) {
+      console.log('Creating missing classrooms table...');
+      
+      await client`
+        CREATE TABLE classrooms (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          description TEXT,
+          scene_count INTEGER DEFAULT 0,
+          data TEXT,
+          created_at INTEGER,
+          updated_at INTEGER
+        )
+      `;
+    }
   } catch (error) {
     console.error('Error ensuring PostgreSQL tables:', error);
   }
@@ -250,9 +267,10 @@ async function ensurePgTables(client: any) {
 
 async function ensurePgTablesVercel(sql: any) {
   try {
-    const queryResult = await sql`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'subjects'`;
+    const subjectsResult = await sql`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'subjects'`;
+    const classroomsResult = await sql`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'classrooms'`;
     
-    if (!queryResult.rows.length) {
+    if (!subjectsResult.rows.length) {
       console.log('Creating PostgreSQL tables on Vercel...');
       
       await sql`
@@ -415,6 +433,22 @@ async function ensurePgTablesVercel(sql: any) {
       await sql`CREATE UNIQUE INDEX course_prerequisites_unique ON course_prerequisites(course_id, prerequisite_id)`;
       
       await seedInitialDataVercel(sql);
+    }
+    
+    if (!classroomsResult.rows.length) {
+      console.log('Creating missing classrooms table on Vercel...');
+      
+      await sql`
+        CREATE TABLE classrooms (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          description TEXT,
+          scene_count INTEGER DEFAULT 0,
+          data TEXT,
+          created_at INTEGER,
+          updated_at INTEGER
+        )
+      `;
     }
   } catch (error) {
     console.error('Error ensuring PostgreSQL tables on Vercel:', error);
