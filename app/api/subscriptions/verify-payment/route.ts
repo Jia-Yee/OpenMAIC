@@ -57,7 +57,7 @@ export async function POST(request: Request) {
     await db.update(subscriptions)
       .set({
         status: 'paid',
-        paidAt: Date.now(),
+        paidAt: Math.floor(Date.now() / 1000),
       })
       .where(eq(subscriptions.id, sub[0].id));
 

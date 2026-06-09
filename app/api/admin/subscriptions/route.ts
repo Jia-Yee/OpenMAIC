@@ -76,6 +76,7 @@ export async function POST(request: NextRequest) {
 
     const db = await ensureDb();
 
+    const now = Math.floor(Date.now() / 1000);
     const newSubscription = {
       userId,
       gradeId,
@@ -83,9 +84,9 @@ export async function POST(request: NextRequest) {
       tradeNo: tradeNo || '',
       amount: amount || 0,
       status: status || 'active',
-      paidAt: Date.now(),
-      expiresAt: expiresAt ? new Date(expiresAt).getTime() : Date.now() + 365 * 24 * 60 * 60 * 1000,
-      createdAt: Date.now(),
+      paidAt: now,
+      expiresAt: expiresAt ? Math.floor(new Date(expiresAt).getTime() / 1000) : now + 365 * 24 * 60 * 60,
+      createdAt: now,
     };
 
     await db.insert(subscriptions).values(newSubscription);

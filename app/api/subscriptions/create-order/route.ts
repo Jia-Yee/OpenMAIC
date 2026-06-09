@@ -50,8 +50,8 @@ export async function POST(request: Request) {
     const amount = grade[0].price || 199;
 
     // Create subscription record
-    const now = Date.now();
-    const expiresAt = now + 365 * 24 * 60 * 60 * 1000;
+    const now = Math.floor(Date.now() / 1000);
+    const expiresAt = now + 365 * 24 * 60 * 60;
 
     await db.insert(subscriptions).values({
       userId: payload.userId as any,

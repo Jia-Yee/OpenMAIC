@@ -36,7 +36,7 @@ export async function GET(request: Request) {
         .set({
           openid,
           status: 'confirmed',
-          confirmedAt: Date.now(),
+          confirmedAt: Math.floor(Date.now() / 1000),
         })
         .where(eq(wechatSessions.sessionKey, sessionKey));
 

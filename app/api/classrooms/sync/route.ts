@@ -103,7 +103,7 @@ export async function POST(request: Request) {
           sortOrder: 0,
           isActive: 1,
           isFree: 0,
-          createdAt: Date.now(),
+          createdAt: Math.floor(Date.now() / 1000),
         });
       } else {
         console.warn('No grade found, skipping course creation in SQLite');

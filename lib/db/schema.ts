@@ -17,8 +17,8 @@ export const users = pgTable('users', {
   phone: text('phone'),
   password: text('password'),
   isAdmin: integer('is_admin').default(0),
-  createdAt: integer('created_at').$defaultFn(() => Date.now()),
-  updatedAt: integer('updated_at').$defaultFn(() => Date.now()),
+  createdAt: integer('created_at').$defaultFn(() => Math.floor(Date.now() / 1000)),
+  updatedAt: integer('updated_at').$defaultFn(() => Math.floor(Date.now() / 1000)),
   lastLoginAt: integer('last_login_at'),
 }, (table) => ({
   openidIdx: index('users_openid_idx').on(table.openid),
@@ -102,7 +102,7 @@ export const courses = pgTable('courses', {
   semester: text('semester').default('full'),
   isActive: integer('is_active').default(1),
   isFree: integer('is_free').default(0),
-  createdAt: integer('created_at').$defaultFn(() => Date.now()),
+  createdAt: integer('created_at').$defaultFn(() => Math.floor(Date.now() / 1000)),
 }, (table) => ({
   gradeIdx: index('courses_grade_idx').on(table.gradeId),
 }));
@@ -119,7 +119,7 @@ export const coursePrerequisites = pgTable('course_prerequisites', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   courseId: text('course_id').notNull().references(() => courses.id, { onDelete: 'cascade' }),
   prerequisiteId: text('prerequisite_id').notNull().references(() => courses.id, { onDelete: 'cascade' }),
-  createdAt: integer('created_at').$defaultFn(() => Date.now()),
+  createdAt: integer('created_at').$defaultFn(() => Math.floor(Date.now() / 1000)),
 }, (table) => ({
   courseIdx: index('course_prerequisites_course_idx').on(table.courseId),
   prerequisiteIdx: index('course_prerequisites_prerequisite_idx').on(table.prerequisiteId),
@@ -142,7 +142,7 @@ export const userGrades = pgTable('user_grades', {
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   gradeId: text('grade_id').notNull().references(() => grades.id, { onDelete: 'cascade' }),
   isActive: integer('is_active').default(1),
-  createdAt: integer('created_at').$defaultFn(() => Date.now()),
+  createdAt: integer('created_at').$defaultFn(() => Math.floor(Date.now() / 1000)),
 }, (table) => ({
   userIdx: index('user_grades_user_idx').on(table.userId),
   gradeIdx: index('user_grades_grade_idx').on(table.gradeId),
@@ -169,8 +169,8 @@ export const subscriptions = pgTable('subscriptions', {
   status: text('status').default('pending').notNull(),
   paidAt: integer('paid_at'),
   expiresAt: integer('expires_at').notNull(),
-  createdAt: integer('created_at').$defaultFn(() => Date.now()),
-  updatedAt: integer('updated_at').$defaultFn(() => Date.now()),
+  createdAt: integer('created_at').$defaultFn(() => Math.floor(Date.now() / 1000)),
+  updatedAt: integer('updated_at').$defaultFn(() => Math.floor(Date.now() / 1000)),
 }, (table) => ({
   userIdx: index('subscriptions_user_idx').on(table.userId),
   gradeIdx: index('subscriptions_grade_idx').on(table.gradeId),
@@ -197,8 +197,8 @@ export const learningProgress = pgTable('learning_progress', {
   completed: integer('completed').default(0),
   stars: integer('stars').default(0),
   lastAccessAt: integer('last_access_at'),
-  createdAt: integer('created_at').$defaultFn(() => Date.now()),
-  updatedAt: integer('updated_at').$defaultFn(() => Date.now()),
+  createdAt: integer('created_at').$defaultFn(() => Math.floor(Date.now() / 1000)),
+  updatedAt: integer('updated_at').$defaultFn(() => Math.floor(Date.now() / 1000)),
 }, (table) => ({
   userIdx: index('learning_progress_user_idx').on(table.userId),
   courseIdx: index('learning_progress_course_idx').on(table.courseId),
@@ -222,7 +222,7 @@ export const wechatSessions = pgTable('wechat_sessions', {
   status: text('status').default('pending').notNull(),
   qrCodeUrl: text('qr_code_url'),
   expiresAt: integer('expires_at').notNull(),
-  createdAt: integer('created_at').$defaultFn(() => Date.now()),
+  createdAt: integer('created_at').$defaultFn(() => Math.floor(Date.now() / 1000)),
   confirmedAt: integer('confirmed_at'),
 }, (table) => ({
   sessionKeyIdx: index('wechat_sessions_session_key_idx').on(table.sessionKey),

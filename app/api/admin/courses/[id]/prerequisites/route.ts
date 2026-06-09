@@ -86,7 +86,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         await db.insert(coursePrerequisites).values({
           courseId: id as any,
           prerequisiteId,
-          createdAt: Date.now(),
+          createdAt: Math.floor(Date.now() / 1000),
         } as any);
         addedCount++;
       }

@@ -134,8 +134,8 @@ export async function PUT(request: Request) {
           progress: Math.min(100, Math.max(0, progress)),
           completed: completed !== undefined ? completed : existing[0].completed,
           stars: stars !== undefined ? Math.min(3, Math.max(0, stars)) : existing[0].stars,
-          lastAccessAt: Date.now(),
-          updatedAt: Date.now(),
+          lastAccessAt: Math.floor(Date.now() / 1000),
+          updatedAt: Math.floor(Date.now() / 1000),
         })
         .where(and(
           eq(learningProgress.userId, userId),
@@ -149,9 +149,9 @@ export async function PUT(request: Request) {
         progress: Math.min(100, Math.max(0, progress)),
         completed: completed ? 1 : 0,
         stars: stars || 0,
-        lastAccessAt: Date.now(),
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
+        lastAccessAt: Math.floor(Date.now() / 1000),
+        createdAt: Math.floor(Date.now() / 1000),
+        updatedAt: Math.floor(Date.now() / 1000),
       });
     }
     

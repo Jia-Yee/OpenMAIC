@@ -47,7 +47,7 @@ export async function GET(request: Request) {
         ));
       
       activeGradeIds = userSubscriptions
-        .filter((s: { expiresAt: number; gradeId: string }) => s.expiresAt > Date.now())
+        .filter((s: { expiresAt: number; gradeId: string }) => s.expiresAt > Math.floor(Date.now() / 1000))
         .map((s: { gradeId: string }) => s.gradeId);
     }
     

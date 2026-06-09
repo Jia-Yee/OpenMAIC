@@ -57,7 +57,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     // Prepare update data
     const updateData: any = {
-      updatedAt: Date.now(),
+      updatedAt: Math.floor(Date.now() / 1000),
     };
 
     if (body.nickname !== undefined) {

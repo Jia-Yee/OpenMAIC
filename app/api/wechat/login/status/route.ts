@@ -33,7 +33,7 @@ export async function GET(request: Request) {
       .from(wechatSessions)
       .where(and(
         eq(wechatSessions.sessionKey, sessionKey),
-        gt(wechatSessions.expiresAt, Date.now())
+        gt(wechatSessions.expiresAt, Math.floor(Date.now() / 1000))
       ))
       .limit(1);
 
@@ -72,7 +72,7 @@ export async function GET(request: Request) {
           id: userId,
           openid: session[0].openid,
           nickname: '微信用户',
-          lastLoginAt: Date.now(),
+          lastLoginAt: Math.floor(Date.now() / 1000),
         });
         user = await db.select()
           .from(users)

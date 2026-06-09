@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
           stage: {
             name: course.title,
             description: course.description || '',
-            createdAt: Date.now(),
+            createdAt: Math.floor(Date.now() / 1000),
           },
           scenes: [],
         },

@@ -80,7 +80,7 @@ export async function POST(request: Request) {
 
     // Update last login time
     await db.update(users)
-      .set({ lastLoginAt: Date.now() })
+      .set({ lastLoginAt: Math.floor(Date.now() / 1000) })
       .where(eq(users.id, loginUser.id));
 
     // Generate JWT

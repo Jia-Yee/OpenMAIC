@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
       semester: semester || 'full',
       isActive: 1,
       isFree: isFree ? 1 : 0,
-      createdAt: Date.now(),
+      createdAt: Math.floor(Date.now() / 1000),
     };
 
     await db.insert(courses).values(newCourse);

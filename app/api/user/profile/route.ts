@@ -56,7 +56,7 @@ export async function GET(request: Request) {
       ));
     
     const activeGradeIds = userSubscriptions
-      .filter((s: { expiresAt: number; gradeId: string }) => s.expiresAt > Date.now())
+      .filter((s: { expiresAt: number; gradeId: string }) => s.expiresAt > Math.floor(Date.now() / 1000))
       .map((s: { gradeId: string }) => s.gradeId);
     
     // Get free courses (not requiring subscription)
@@ -164,7 +164,7 @@ export async function POST(request: Request) {
         eq(subscriptions.status, 'active'),
       ));
     
-    const expiredCount = activeSubscriptions.filter((s: { expiresAt: number }) => s.expiresAt < Date.now()).length;
+    const expiredCount = activeSubscriptions.filter((s: { expiresAt: number }) => s.expiresAt < Math.floor(Date.now() / 1000)).length;
     const validCount = activeSubscriptions.length - expiredCount;
     
     return NextResponse.json({

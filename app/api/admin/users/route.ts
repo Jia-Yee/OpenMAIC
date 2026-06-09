@@ -85,8 +85,8 @@ export async function POST(request: Request) {
       phone: phone || '',
       password: hashedPassword,
       isAdmin: isAdmin ? 1 : 0,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
+      createdAt: Math.floor(Date.now() / 1000),
+      updatedAt: Math.floor(Date.now() / 1000),
     };
 
     await db.insert(users).values(newUser);
