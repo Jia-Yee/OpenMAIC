@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb, initDb, autoSaveDb } from '@/lib/db';
-import { users } from '@/lib/db/schema';
-import { asc, eq } from 'drizzle-orm';
+import { users, asc, eq } from '@/lib/db/schema';
 import type { NewUser } from '@/lib/db/schema';
 import { hashPassword } from '@/lib/auth';
 import { nanoid } from 'nanoid';
@@ -85,9 +84,9 @@ export async function POST(request: Request) {
       avatarUrl: avatarUrl || '',
       phone: phone || '',
       password: hashedPassword,
-      isAdmin: isAdmin || false,
-      createdAt: new Date(),
-      updatedAt: new Date(),
+      isAdmin: isAdmin ? 1 : 0,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
     };
 
     await db.insert(users).values(newUser);

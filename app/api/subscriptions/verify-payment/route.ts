@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb, initDb } from '@/lib/db';
-import { subscriptions } from '@/lib/db/schema';
-import { eq } from 'drizzle-orm';
+import { subscriptions, eq } from '@/lib/db/schema';
 import { verifyToken } from '@/lib/auth';
 
 let dbInitialized = false;
@@ -58,7 +57,7 @@ export async function POST(request: Request) {
     await db.update(subscriptions)
       .set({
         status: 'paid',
-        paidAt: new Date(),
+        paidAt: Date.now(),
       })
       .where(eq(subscriptions.id, sub[0].id));
 

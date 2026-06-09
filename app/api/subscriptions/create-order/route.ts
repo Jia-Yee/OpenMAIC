@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb, initDb } from '@/lib/db';
-import { subscriptions, grades } from '@/lib/db/schema';
-import { eq } from 'drizzle-orm';
+import { subscriptions, grades, eq } from '@/lib/db/schema';
 import { verifyToken } from '@/lib/auth';
 import { nanoid } from 'nanoid';
 
@@ -51,18 +50,17 @@ export async function POST(request: Request) {
     const amount = grade[0].price || 199;
 
     // Create subscription record
-    const now = new Date();
-    const expiresAt = new Date(now);
-    expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+    const now = Date.now();
+    const expiresAt = now + 365 * 24 * 60 * 60 * 1000;
 
     await db.insert(subscriptions).values({
-      userId: payload.userId,
+      userId: payload.userId as any,
       gradeId,
       orderNo,
       amount,
       status: 'pending',
       expiresAt,
-    });
+    } as any);
 
     // Mock mode: auto-complete payment
     if (mock) {

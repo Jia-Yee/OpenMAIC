@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb, initDb } from '@/lib/db';
-import { users } from '@/lib/db/schema';
-import { eq, or } from 'drizzle-orm';
+import { users, eq, or } from '@/lib/db/schema';
 import { generateToken, comparePassword } from '@/lib/auth';
 
 let dbInitialized = false;
@@ -81,11 +80,11 @@ export async function POST(request: Request) {
 
     // Update last login time
     await db.update(users)
-      .set({ lastLoginAt: new Date() })
+      .set({ lastLoginAt: Date.now() })
       .where(eq(users.id, loginUser.id));
 
     // Generate JWT
-    const token = generateToken({ userId: loginUser.id, openid: loginUser.openid, isAdmin: user.isAdmin ?? false });
+    const token = generateToken({ userId: loginUser.id, openid: loginUser.openid, isAdmin: Boolean(user.isAdmin) });
 
     return NextResponse.json({
       success: true,

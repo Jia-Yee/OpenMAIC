@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, initDb } from '@/lib/db';
-import { subscriptions, users, grades, textbooks, subjects } from '@/lib/db/schema';
-import { eq, and, desc } from 'drizzle-orm';
+import { subscriptions, users, grades, textbooks, subjects, eq, and, desc } from '@/lib/db/schema';
 
 let dbInitialized = false;
 
@@ -47,7 +46,7 @@ export async function GET(request: NextRequest) {
       .leftJoin(subjects, eq(textbooks.subjectId, subjects.id))
       .orderBy(desc(subscriptions.paidAt));
 
-    const filtered = userId ? result.filter((s) => s.userId === userId) : result;
+    const filtered = userId ? result.filter((s: { userId: string }) => s.userId === userId) : result;
 
     return NextResponse.json({ subscriptions: filtered });
   } catch (error) {
@@ -84,9 +83,9 @@ export async function POST(request: NextRequest) {
       tradeNo: tradeNo || '',
       amount: amount || 0,
       status: status || 'active',
-      paidAt: new Date(),
-      expiresAt: expiresAt ? new Date(expiresAt) : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
-      createdAt: new Date(),
+      paidAt: Date.now(),
+      expiresAt: expiresAt ? new Date(expiresAt).getTime() : Date.now() + 365 * 24 * 60 * 60 * 1000,
+      createdAt: Date.now(),
     };
 
     await db.insert(subscriptions).values(newSubscription);

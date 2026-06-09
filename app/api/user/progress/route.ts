@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb, initDb } from '@/lib/db';
-import { learningProgress, courses } from '@/lib/db/schema';
-import { eq, and, like } from 'drizzle-orm';
+import { learningProgress, courses, eq, and, like } from '@/lib/db/schema';
 import { verifyToken } from '@/lib/auth';
 
 let dbInitialized = false;
@@ -135,8 +134,8 @@ export async function PUT(request: Request) {
           progress: Math.min(100, Math.max(0, progress)),
           completed: completed !== undefined ? completed : existing[0].completed,
           stars: stars !== undefined ? Math.min(3, Math.max(0, stars)) : existing[0].stars,
-          lastAccessAt: new Date(),
-          updatedAt: new Date(),
+          lastAccessAt: Date.now(),
+          updatedAt: Date.now(),
         })
         .where(and(
           eq(learningProgress.userId, userId),
@@ -148,11 +147,11 @@ export async function PUT(request: Request) {
         userId,
         courseId,
         progress: Math.min(100, Math.max(0, progress)),
-        completed: completed || false,
+        completed: completed ? 1 : 0,
         stars: stars || 0,
-        lastAccessAt: new Date(),
-        createdAt: new Date(),
-        updatedAt: new Date(),
+        lastAccessAt: Date.now(),
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
       });
     }
     
@@ -211,10 +210,10 @@ export async function POST(request: Request) {
       ));
     
     const progressMap: Record<string, { progress: number | null; completed: boolean | null; stars: number | null }> = {};
-    results.forEach(r => {
+    results.forEach((r: { courseId: string; progress: number | null; completed: number | null; stars: number | null }) => {
       progressMap[r.courseId] = {
         progress: r.progress,
-        completed: r.completed,
+        completed: r.completed ? true : r.completed === null ? null : false,
         stars: r.stars,
       };
     });

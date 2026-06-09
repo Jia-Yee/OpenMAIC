@@ -108,17 +108,16 @@ export async function POST(request: Request) {
 
           if (defaultGradeId) {
             await db.insert(courses).values({
-              id: classroom.id,
-              gradeId: defaultGradeId,
+              gradeId: defaultGradeId as any,
               title: classroom.name || 'Untitled',
               description: classroom.description || '',
               classroomId: classroom.id,
               duration: 0,
               sortOrder: 0,
-              isActive: true,
-              isFree: false,
-              createdAt: new Date(),
-            });
+              isActive: 1,
+              isFree: 0,
+              createdAt: Date.now(),
+            } as any);
           }
         }
 

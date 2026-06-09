@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb, initDb, getSqliteDb } from '@/lib/db';
-import { courses, coursePrerequisites } from '@/lib/db/schema';
-import { eq } from 'drizzle-orm';
+import { courses, coursePrerequisites, eq } from '@/lib/db/schema';
 import { writeFileSync, existsSync } from 'fs';
 import { dirname } from 'path';
 

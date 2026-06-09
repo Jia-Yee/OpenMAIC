@@ -1,6 +1,5 @@
 import { initDb, getDb } from './index';
-import { subjects, textbooks, grades, courses } from './schema';
-import { eq } from 'drizzle-orm';
+import { subjects, textbooks, grades, courses, eq } from './schema';
 
 const SEED_DATA = {
   subjects: [

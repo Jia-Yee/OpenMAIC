@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, initDb } from '@/lib/db';
-import { users } from '@/lib/db/schema';
-import { eq } from 'drizzle-orm';
+import { users, eq } from '@/lib/db/schema';
 import { hashPassword } from '@/lib/auth';
 
 let dbInitialized = false;
@@ -58,7 +57,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     // Prepare update data
     const updateData: any = {
-      updatedAt: new Date(),
+      updatedAt: Date.now(),
     };
 
     if (body.nickname !== undefined) {

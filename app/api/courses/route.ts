@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb, initDb } from '@/lib/db';
-import { courses, coursePrerequisites } from '@/lib/db/schema';
-import { asc, eq } from 'drizzle-orm';
+import { courses, coursePrerequisites, asc, eq } from '@/lib/db/schema';
 
 let dbInitialized = false;
 
@@ -38,14 +37,14 @@ export async function GET(request: Request) {
 
     // Fetch prerequisites for each course
     const coursesWithPrerequisites = await Promise.all(
-      result.map(async (course) => {
+      result.map(async (course: { id: string; title: string }) => {
         const prereqs = await db.select({
           prerequisiteId: coursePrerequisites.prerequisiteId,
         })
           .from(coursePrerequisites)
           .where(eq(coursePrerequisites.courseId, course.id));
         
-        const prerequisiteIds = prereqs.map(p => p.prerequisiteId);
+        const prerequisiteIds = prereqs.map((p: { prerequisiteId: string }) => p.prerequisiteId);
         console.log('Course:', course.title, 'prerequisites from DB:', prerequisiteIds);
         
         return {

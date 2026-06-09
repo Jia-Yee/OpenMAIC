@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb, initDb, autoSaveDb } from '@/lib/db';
-import { courses } from '@/lib/db/schema';
-import { eq } from 'drizzle-orm';
+import { courses, eq } from '@/lib/db/schema';
 
 let dbInitialized = false;
 

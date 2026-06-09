@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     }).from(courses);
 
     // Filter in memory based on conditions
-    const coursesToImport = allCourses.filter((course) => {
+    const coursesToImport = allCourses.filter((course: { id: string; gradeId: string }) => {
       if (courseIds && courseIds.length > 0) {
         return courseIds.includes(course.id);
       }

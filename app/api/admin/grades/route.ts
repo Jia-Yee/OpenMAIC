@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, initDb } from '@/lib/db';
-import { grades, textbooks, subjects } from '@/lib/db/schema';
-import { eq, asc } from 'drizzle-orm';
+import { grades, textbooks, subjects, eq, asc } from '@/lib/db/schema';
 
 let dbInitialized = false;
 
@@ -44,7 +43,7 @@ export async function GET(request: NextRequest) {
       .leftJoin(subjects, eq(textbooks.subjectId, subjects.id))
       .orderBy(asc(grades.sortOrder));
 
-    const filtered = textbookId ? result.filter((g) => g.textbookId === textbookId) : result;
+    const filtered = textbookId ? result.filter((g: { textbookId: string }) => g.textbookId === textbookId) : result;
 
     return NextResponse.json({ grades: filtered });
   } catch (error) {

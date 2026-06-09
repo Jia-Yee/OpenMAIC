@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb, initDb } from '@/lib/db';
-import { users, subscriptions, courses } from '@/lib/db/schema';
-import { eq, and, inArray } from 'drizzle-orm';
+import { users, subscriptions, courses, eq, and, inArray } from '@/lib/db/schema';
 import { verifyToken } from '@/lib/auth';
 
 let dbInitialized = false;
@@ -57,8 +56,8 @@ export async function GET(request: Request) {
       ));
     
     const activeGradeIds = userSubscriptions
-      .filter(s => new Date(s.expiresAt) > new Date())
-      .map(s => s.gradeId);
+      .filter((s: { expiresAt: number; gradeId: string }) => s.expiresAt > Date.now())
+      .map((s: { gradeId: string }) => s.gradeId);
     
     // Get free courses (not requiring subscription)
     const freeCourses = await db.select({
@@ -70,7 +69,7 @@ export async function GET(request: Request) {
       sortOrder: courses.sortOrder,
     })
       .from(courses)
-      .where(eq(courses.isFree, true));
+      .where(eq(courses.isFree, 1));
     
     // Get subscribed courses
     const subscribedCourses = activeGradeIds.length > 0
@@ -165,7 +164,7 @@ export async function POST(request: Request) {
         eq(subscriptions.status, 'active'),
       ));
     
-    const expiredCount = activeSubscriptions.filter(s => new Date(s.expiresAt) < new Date()).length;
+    const expiredCount = activeSubscriptions.filter((s: { expiresAt: number }) => s.expiresAt < Date.now()).length;
     const validCount = activeSubscriptions.length - expiredCount;
     
     return NextResponse.json({

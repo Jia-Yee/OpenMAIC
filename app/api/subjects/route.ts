@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { subjects } from '@/lib/db/schema';
-import { asc, eq } from 'drizzle-orm';
+import { subjects, asc, eq } from '@/lib/db/schema';
 import { initDb } from '@/lib/db';
 
 // Initialize database on first request
@@ -25,7 +24,7 @@ export async function GET() {
 
     const result = await db.select()
       .from(subjects)
-      .where(eq(subjects.isActive, true))
+      .where(eq(subjects.isActive, 1))
       .orderBy(asc(subjects.sortOrder));
 
     return NextResponse.json({ subjects: result });

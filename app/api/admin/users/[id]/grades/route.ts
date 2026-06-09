@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, initDb } from '@/lib/db';
-import { userGrades, grades, textbooks, subjects } from '@/lib/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { userGrades, grades, textbooks, subjects, eq, and } from '@/lib/db/schema';
 import type { NewUserGrade } from '@/lib/db/schema';
 
 let dbInitialized = false;
@@ -72,7 +71,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const db = await ensureDb();
 
     // Begin transaction
-    await db.transaction(async (tx) => {
+    await db.transaction(async (tx: any) => {
       // Delete existing permissions
       await tx.delete(userGrades).where(eq(userGrades.userId, id));
 
@@ -80,7 +79,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       const newUserGrades: NewUserGrade[] = gradeIds.map((gradeId: string) => ({
         userId: id,
         gradeId,
-        isActive: true,
+        isActive: 1,
       }));
 
       if (newUserGrades.length > 0) {

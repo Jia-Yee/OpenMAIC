@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
 import { listClassroomsFromServer } from '@/lib/server/classroom-server-db';
 import { getDb, initDb } from '@/lib/db';
-import { courses, grades, subjects, textbooks } from '@/lib/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { courses, grades, subjects, textbooks, eq, and } from '@/lib/db/schema';
 
 let dbInitialized = false;
 
@@ -97,7 +96,7 @@ export async function POST(request: Request) {
     const existingCourses = await db.select({ id: courses.id })
       .from(courses)
       .where(eq(courses.gradeId, targetGradeId));
-    const existingIds = new Set(existingCourses.map(c => c.id));
+    const existingIds = new Set(existingCourses.map((c: { id: string }) => c.id));
 
     for (const classroom of classrooms) {
       if (existingIds.has(classroom.id)) {
@@ -107,15 +106,14 @@ export async function POST(request: Request) {
 
       try {
         await db.insert(courses).values({
-          id: classroom.id,
-          gradeId: targetGradeId,
+          gradeId: targetGradeId as any,
           title: classroom.name || 'Untitled',
           description: classroom.description || '',
           duration: 0,
-          isActive: true,
-          isFree: isFree,
+          isActive: 1,
+          isFree: isFree ? 1 : 0,
           sortOrder: syncedCount,
-        });
+        } as any);
         syncedCount++;
       } catch (err) {
         console.error(`Failed to sync classroom ${classroom.id}:`, err);

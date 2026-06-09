@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb, initDb } from '@/lib/db';
-import { wechatSessions, users } from '@/lib/db/schema';
-import { eq, and, gt } from 'drizzle-orm';
+import { wechatSessions, users, eq, and, gt } from '@/lib/db/schema';
 import { generateToken } from '@/lib/auth';
 
 let dbInitialized = false;
@@ -34,7 +33,7 @@ export async function GET(request: Request) {
       .from(wechatSessions)
       .where(and(
         eq(wechatSessions.sessionKey, sessionKey),
-        gt(wechatSessions.expiresAt, new Date())
+        gt(wechatSessions.expiresAt, Date.now())
       ))
       .limit(1);
 
@@ -73,7 +72,7 @@ export async function GET(request: Request) {
           id: userId,
           openid: session[0].openid,
           nickname: '微信用户',
-          lastLoginAt: new Date(),
+          lastLoginAt: Date.now(),
         });
         user = await db.select()
           .from(users)
@@ -82,7 +81,7 @@ export async function GET(request: Request) {
       } else {
         // Update last login
         await db.update(users)
-          .set({ lastLoginAt: new Date() })
+          .set({ lastLoginAt: Date.now() })
           .where(eq(users.id, user[0].id));
       }
 

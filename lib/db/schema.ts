@@ -6,7 +6,7 @@ import {
   index,
   unique,
 } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { relations, eq, and, asc, desc, inArray, like, or, gt } from 'drizzle-orm';
 
 export const users = pgTable('users', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -16,13 +16,12 @@ export const users = pgTable('users', {
   avatarUrl: text('avatar_url'),
   phone: text('phone'),
   password: text('password'),
-  isAdmin: integer('is_admin', { mode: 'boolean' }).default(false),
-  createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
-  updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
-  lastLoginAt: integer('last_login_at', { mode: 'timestamp' }),
+  isAdmin: integer('is_admin').default(0),
+  createdAt: integer('created_at').$defaultFn(() => Date.now()),
+  updatedAt: integer('updated_at').$defaultFn(() => Date.now()),
+  lastLoginAt: integer('last_login_at'),
 }, (table) => ({
   openidIdx: index('users_openid_idx').on(table.openid),
-  phoneIdx: index('users_phone_idx').on(table.phone),
 }));
 
 export const usersRelations = relations(users, ({ many }) => ({
@@ -36,7 +35,7 @@ export const subjects = pgTable('subjects', {
   description: text('description'),
   iconUrl: text('icon_url'),
   sortOrder: integer('sort_order').default(0),
-  isActive: integer('is_active', { mode: 'boolean' }).default(true),
+  isActive: integer('is_active').default(1),
 }, (table) => ({
   codeIdx: index('subjects_code_idx').on(table.code),
 }));
@@ -54,7 +53,7 @@ export const textbooks = pgTable('textbooks', {
   description: text('description'),
   coverUrl: text('cover_url'),
   sortOrder: integer('sort_order').default(0),
-  isActive: integer('is_active', { mode: 'boolean' }).default(true),
+  isActive: integer('is_active').default(1),
 }, (table) => ({
   subjectIdx: index('textbooks_subject_idx').on(table.subjectId),
 }));
@@ -77,7 +76,7 @@ export const grades = pgTable('grades', {
   price: numeric('price').default('0'),
   originalPrice: numeric('original_price'),
   sortOrder: integer('sort_order').default(0),
-  isActive: integer('is_active', { mode: 'boolean' }).default(true),
+  isActive: integer('is_active').default(1),
 }, (table) => ({
   textbookIdx: index('grades_textbook_idx').on(table.textbookId),
 }));
@@ -101,9 +100,9 @@ export const courses = pgTable('courses', {
   duration: integer('duration'),
   sortOrder: integer('sort_order').default(0),
   semester: text('semester').default('full'),
-  isActive: integer('is_active', { mode: 'boolean' }).default(true),
-  isFree: integer('is_free', { mode: 'boolean' }).default(false),
-  createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+  isActive: integer('is_active').default(1),
+  isFree: integer('is_free').default(0),
+  createdAt: integer('created_at').$defaultFn(() => Date.now()),
 }, (table) => ({
   gradeIdx: index('courses_grade_idx').on(table.gradeId),
 }));
@@ -120,7 +119,7 @@ export const coursePrerequisites = pgTable('course_prerequisites', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   courseId: text('course_id').notNull().references(() => courses.id, { onDelete: 'cascade' }),
   prerequisiteId: text('prerequisite_id').notNull().references(() => courses.id, { onDelete: 'cascade' }),
-  createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+  createdAt: integer('created_at').$defaultFn(() => Date.now()),
 }, (table) => ({
   courseIdx: index('course_prerequisites_course_idx').on(table.courseId),
   prerequisiteIdx: index('course_prerequisites_prerequisite_idx').on(table.prerequisiteId),
@@ -142,12 +141,11 @@ export const userGrades = pgTable('user_grades', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   gradeId: text('grade_id').notNull().references(() => grades.id, { onDelete: 'cascade' }),
-  isActive: integer('is_active', { mode: 'boolean' }).default(true),
-  createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+  isActive: integer('is_active').default(1),
+  createdAt: integer('created_at').$defaultFn(() => Date.now()),
 }, (table) => ({
   userIdx: index('user_grades_user_idx').on(table.userId),
   gradeIdx: index('user_grades_grade_idx').on(table.gradeId),
-  userGradeIdx: index('user_grades_user_grade_idx').on(table.userId, table.gradeId),
 }));
 
 export const userGradesRelations = relations(userGrades, ({ one }) => ({
@@ -169,10 +167,10 @@ export const subscriptions = pgTable('subscriptions', {
   tradeNo: text('trade_no'),
   amount: numeric('amount').notNull(),
   status: text('status').default('pending').notNull(),
-  paidAt: integer('paid_at', { mode: 'timestamp' }),
-  expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
-  createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
-  updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+  paidAt: integer('paid_at'),
+  expiresAt: integer('expires_at').notNull(),
+  createdAt: integer('created_at').$defaultFn(() => Date.now()),
+  updatedAt: integer('updated_at').$defaultFn(() => Date.now()),
 }, (table) => ({
   userIdx: index('subscriptions_user_idx').on(table.userId),
   gradeIdx: index('subscriptions_grade_idx').on(table.gradeId),
@@ -196,15 +194,14 @@ export const learningProgress = pgTable('learning_progress', {
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   courseId: text('course_id').notNull().references(() => courses.id, { onDelete: 'cascade' }),
   progress: integer('progress').default(0),
-  completed: integer('completed', { mode: 'boolean' }).default(false),
+  completed: integer('completed').default(0),
   stars: integer('stars').default(0),
-  lastAccessAt: integer('last_access_at', { mode: 'timestamp' }),
-  createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
-  updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+  lastAccessAt: integer('last_access_at'),
+  createdAt: integer('created_at').$defaultFn(() => Date.now()),
+  updatedAt: integer('updated_at').$defaultFn(() => Date.now()),
 }, (table) => ({
   userIdx: index('learning_progress_user_idx').on(table.userId),
   courseIdx: index('learning_progress_course_idx').on(table.courseId),
-  userCourseIdx: index('learning_progress_user_course_idx').on(table.userId, table.courseId),
 }));
 
 export const learningProgressRelations = relations(learningProgress, ({ one }) => ({
@@ -224,9 +221,9 @@ export const wechatSessions = pgTable('wechat_sessions', {
   openid: text('openid'),
   status: text('status').default('pending').notNull(),
   qrCodeUrl: text('qr_code_url'),
-  expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
-  createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
-  confirmedAt: integer('confirmed_at', { mode: 'timestamp' }),
+  expiresAt: integer('expires_at').notNull(),
+  createdAt: integer('created_at').$defaultFn(() => Date.now()),
+  confirmedAt: integer('confirmed_at'),
 }, (table) => ({
   sessionKeyIdx: index('wechat_sessions_session_key_idx').on(table.sessionKey),
   statusIdx: index('wechat_sessions_status_idx').on(table.status),
@@ -245,3 +242,5 @@ export type Subscription = typeof subscriptions.$inferSelect;
 export type NewSubscription = typeof subscriptions.$inferInsert;
 export type WechatSession = typeof wechatSessions.$inferSelect;
 export type NewWechatSession = typeof wechatSessions.$inferInsert;
+
+export { eq, and, asc, desc, inArray, like, or, gt };

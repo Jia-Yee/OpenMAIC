@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb, initDb, autoSaveDb } from '@/lib/db';
-import { coursePrerequisites, courses } from '@/lib/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { coursePrerequisites, courses, eq, and } from '@/lib/db/schema';
 
 let dbInitialized = false;
 
@@ -85,10 +84,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       
       if (existing.length === 0) {
         await db.insert(coursePrerequisites).values({
-          courseId: id,
+          courseId: id as any,
           prerequisiteId,
-          createdAt: new Date(),
-        });
+          createdAt: Date.now(),
+        } as any);
         addedCount++;
       }
     }

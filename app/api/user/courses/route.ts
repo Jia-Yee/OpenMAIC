@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb, initDb } from '@/lib/db';
-import { courses, subscriptions, coursePrerequisites } from '@/lib/db/schema';
-import { eq, and, asc } from 'drizzle-orm';
+import { courses, subscriptions, coursePrerequisites, eq, and, asc } from '@/lib/db/schema';
 import { verifyToken } from '@/lib/auth';
 
 let dbInitialized = false;
@@ -48,8 +47,8 @@ export async function GET(request: Request) {
         ));
       
       activeGradeIds = userSubscriptions
-        .filter(s => new Date(s.expiresAt) > new Date())
-        .map(s => s.gradeId);
+        .filter((s: { expiresAt: number; gradeId: string }) => s.expiresAt > Date.now())
+        .map((s: { gradeId: string }) => s.gradeId);
     }
     
     if (!gradeId) {
@@ -77,7 +76,7 @@ export async function GET(request: Request) {
     
     // Fetch prerequisites for each course
     const coursesWithPrerequisites = await Promise.all(
-      coursesResult.map(async (course) => {
+      coursesResult.map(async (course: { id: string }) => {
         const prereqs = await db.select({
           prerequisiteId: coursePrerequisites.prerequisiteId,
         })
@@ -86,13 +85,13 @@ export async function GET(request: Request) {
         
         return {
           ...course,
-          prerequisites: prereqs.map(p => p.prerequisiteId),
+          prerequisites: prereqs.map((p: { prerequisiteId: string }) => p.prerequisiteId),
         };
       })
     );
     
     // Determine unlock status for each course
-    const coursesWithUnlockStatus = coursesWithPrerequisites.map(course => {
+    const coursesWithUnlockStatus = coursesWithPrerequisites.map((course: { isFree: number; gradeId: string; prerequisites: string[] }) => {
       // Free courses are always unlocked
       if (course.isFree) {
         return { ...course, unlocked: true };

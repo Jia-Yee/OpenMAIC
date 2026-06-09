@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb, initDb } from '@/lib/db';
-import { wechatSessions } from '@/lib/db/schema';
-import { eq } from 'drizzle-orm';
+import { wechatSessions, eq } from '@/lib/db/schema';
 
 let dbInitialized = false;
 
@@ -37,7 +36,7 @@ export async function GET(request: Request) {
         .set({
           openid,
           status: 'confirmed',
-          confirmedAt: new Date(),
+          confirmedAt: Date.now(),
         })
         .where(eq(wechatSessions.sessionKey, sessionKey));
 

@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb, initDb } from '@/lib/db';
-import { grades } from '@/lib/db/schema';
-import { asc, eq } from 'drizzle-orm';
+import { grades, asc, eq } from '@/lib/db/schema';
 
 let dbInitialized = false;
 
@@ -37,7 +36,7 @@ export async function GET(request: Request) {
       .orderBy(asc(grades.sortOrder));
 
     // Transform to match expected format with price string
-    const formatted = result.map(g => ({
+    const formatted = result.map((g: { price?: number; originalPrice?: number }) => ({
       ...g,
       price: g.price?.toString() || '199',
       originalPrice: g.originalPrice?.toString(),

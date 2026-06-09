@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, initDb, getSqliteDb } from '@/lib/db';
-import { courses, grades, textbooks, subjects } from '@/lib/db/schema';
-import { eq, asc } from 'drizzle-orm';
+import { courses, grades, textbooks, subjects, eq, asc } from '@/lib/db/schema';
 import type { NewCourse } from '@/lib/db/schema';
 import { writeFileSync, existsSync } from 'fs';
 import { dirname } from 'path';
@@ -67,7 +66,7 @@ export async function GET(request: NextRequest) {
       .leftJoin(subjects, eq(textbooks.subjectId, subjects.id))
       .orderBy(asc(courses.sortOrder));
 
-    const filtered = gradeId ? result.filter((c) => c.gradeId === gradeId) : result;
+    const filtered = gradeId ? result.filter((c: { gradeId: string }) => c.gradeId === gradeId) : result;
 
     return NextResponse.json({ courses: filtered });
   } catch (error) {
@@ -107,9 +106,9 @@ export async function POST(request: NextRequest) {
       duration: duration || 0,
       sortOrder: sortOrder || 0,
       semester: semester || 'full',
-      isActive: true,
-      isFree: isFree || false,
-      createdAt: new Date(),
+      isActive: 1,
+      isFree: isFree ? 1 : 0,
+      createdAt: Date.now(),
     };
 
     await db.insert(courses).values(newCourse);

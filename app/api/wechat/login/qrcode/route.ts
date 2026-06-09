@@ -22,18 +22,18 @@ export async function POST() {
     const db = await ensureDb();
 
     const sessionKey = nanoid(32);
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+    const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes
 
     // In production, this would call WeChat API to generate QR code
     // For development, we create a mock QR code URL
     const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=weixin://open/login?session_key=${sessionKey}`;
 
     await db.insert(wechatSessions).values({
-      sessionKey,
+      sessionKey: sessionKey as any,
       status: 'pending',
       qrCodeUrl,
       expiresAt,
-    });
+    } as any);
 
     return NextResponse.json({
       sessionKey,

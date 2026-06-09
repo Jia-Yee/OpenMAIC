@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
 import { saveClassroomToServer, updateClassroomOnServer } from '@/lib/server/classroom-server-db';
 import { getDb, initDb } from '@/lib/db';
-import { courses, grades, textbooks, subjects } from '@/lib/db/schema';
-import { eq } from 'drizzle-orm';
+import { courses, grades, textbooks, subjects, eq } from '@/lib/db/schema';
 
 let dbInitialized = false;
 
@@ -102,9 +101,9 @@ export async function POST(request: Request) {
           description: description || '',
           duration: 0,
           sortOrder: 0,
-          isActive: true,
-          isFree: false,
-          createdAt: new Date(),
+          isActive: 1,
+          isFree: 0,
+          createdAt: Date.now(),
         });
       } else {
         console.warn('No grade found, skipping course creation in SQLite');
