@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getDb, initDb } from '@/lib/db';
 import { subscriptions, users, grades, textbooks, subjects } from '@/lib/db/schema';
 import { eq, and, desc } from 'drizzle-orm';
@@ -17,14 +17,14 @@ async function ensureDb() {
  * GET /api/admin/subscriptions
  * Get all subscriptions with user and grade info
  */
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get('userId');
 
     const db = await ensureDb();
 
-    let query = db.select({
+    const result = await db.select({
       id: subscriptions.id,
       userId: subscriptions.userId,
       gradeId: subscriptions.gradeId,
@@ -47,13 +47,9 @@ export async function GET(request: Request) {
       .leftJoin(subjects, eq(textbooks.subjectId, subjects.id))
       .orderBy(desc(subscriptions.paidAt));
 
-    if (userId) {
-      query = query.where(eq(subscriptions.userId, userId));
-    }
+    const filtered = userId ? result.filter((s) => s.userId === userId) : result;
 
-    const result = await query;
-
-    return NextResponse.json({ subscriptions: result });
+    return NextResponse.json({ subscriptions: filtered });
   } catch (error) {
     console.error('Error fetching subscriptions:', error);
     return NextResponse.json(
@@ -67,7 +63,7 @@ export async function GET(request: Request) {
  * POST /api/admin/subscriptions
  * Create a new subscription
  */
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { userId, gradeId, orderNo, tradeNo, amount, status, expiresAt } = body;
@@ -93,12 +89,11 @@ export async function POST(request: Request) {
       createdAt: new Date(),
     };
 
-    const result = await db.insert(subscriptions).values(newSubscription);
+    await db.insert(subscriptions).values(newSubscription);
 
     return NextResponse.json({
       success: true,
       message: 'Subscription created successfully',
-      subscription: { ...newSubscription, id: result.lastInsertRowId }
     });
   } catch (error) {
     console.error('Error creating subscription:', error);

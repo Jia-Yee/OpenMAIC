@@ -85,7 +85,7 @@ export async function POST(request: Request) {
       .where(eq(users.id, loginUser.id));
 
     // Generate JWT
-    const token = generateToken({ userId: loginUser.id, openid: loginUser.openid, isAdmin: user.isAdmin });
+    const token = generateToken({ userId: loginUser.id, openid: loginUser.openid, isAdmin: user.isAdmin ?? false });
 
     return NextResponse.json({
       success: true,

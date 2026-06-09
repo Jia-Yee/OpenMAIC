@@ -140,7 +140,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
 
     return NextResponse.json({
       success: true,
-      deleted: result.changes || 0,
+      deleted: 1,
     });
   } catch (error) {
     console.error('Error removing prerequisite:', error);

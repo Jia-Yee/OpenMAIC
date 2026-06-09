@@ -109,9 +109,9 @@ export async function POST(request: Request) {
         await db.insert(courses).values({
           id: classroom.id,
           gradeId: targetGradeId,
-          title: classroom.name || classroom.title || 'Untitled',
+          title: classroom.name || 'Untitled',
           description: classroom.description || '',
-          duration: classroom.duration || 0,
+          duration: 0,
           isActive: true,
           isFree: isFree,
           sortOrder: syncedCount,

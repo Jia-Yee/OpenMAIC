@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getDb, initDb } from '@/lib/db';
 import { grades, textbooks, subjects } from '@/lib/db/schema';
 import { eq, asc } from 'drizzle-orm';
@@ -17,14 +17,14 @@ async function ensureDb() {
  * GET /api/admin/grades
  * Get all grades with textbook and subject info
  */
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const textbookId = searchParams.get('textbookId');
 
     const db = await ensureDb();
 
-    let query = db.select({
+    const result = await db.select({
       id: grades.id,
       textbookId: grades.textbookId,
       name: grades.name,
@@ -44,13 +44,9 @@ export async function GET(request: Request) {
       .leftJoin(subjects, eq(textbooks.subjectId, subjects.id))
       .orderBy(asc(grades.sortOrder));
 
-    if (textbookId) {
-      query = query.where(eq(grades.textbookId, textbookId));
-    }
+    const filtered = textbookId ? result.filter((g) => g.textbookId === textbookId) : result;
 
-    const result = await query;
-
-    return NextResponse.json({ grades: result });
+    return NextResponse.json({ grades: filtered });
   } catch (error) {
     console.error('Error fetching grades:', error);
     return NextResponse.json(

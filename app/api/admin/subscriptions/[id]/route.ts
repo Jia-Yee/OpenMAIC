@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getDb, initDb } from '@/lib/db';
 import { subscriptions } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
@@ -17,9 +17,9 @@ async function ensureDb() {
  * GET /api/admin/subscriptions/[id]
  * Get subscription by ID
  */
-export async function GET(request: Request, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { id } = params;
+    const { id } = await params;
 
     const db = await ensureDb();
 
@@ -48,9 +48,9 @@ export async function GET(request: Request, { params }: { params: { id: string }
  * PUT /api/admin/subscriptions/[id]
  * Update subscription
  */
-export async function PUT(request: Request, { params }: { params: { id: string } }) {
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { id } = params;
+    const { id } = await params;
     const body = await request.json();
 
     const db = await ensureDb();
@@ -60,16 +60,9 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     if (body.expiresAt !== undefined) updateData.expiresAt = new Date(body.expiresAt);
     if (body.amount !== undefined) updateData.amount = body.amount;
 
-    const result = await db.update(subscriptions)
+    await db.update(subscriptions)
       .set(updateData)
       .where(eq(subscriptions.id, id));
-
-    if (result.rowsAffected === 0) {
-      return NextResponse.json(
-        { error: 'Subscription not found' },
-        { status: 404 }
-      );
-    }
 
     return NextResponse.json({ success: true, message: 'Subscription updated successfully' });
   } catch (error) {
@@ -85,24 +78,17 @@ export async function PUT(request: Request, { params }: { params: { id: string }
  * DELETE /api/admin/subscriptions/[id]
  * Delete subscription
  */
-export async function DELETE(request: Request, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { id } = params;
+    const { id } = await params;
 
     const db = await ensureDb();
 
-    const result = await db.update(subscriptions)
+    await db.update(subscriptions)
       .set({
         status: 'expired',
       })
       .where(eq(subscriptions.id, id));
-
-    if (result.rowsAffected === 0) {
-      return NextResponse.json(
-        { error: 'Subscription not found' },
-        { status: 404 }
-      );
-    }
 
     return NextResponse.json({ success: true, message: 'Subscription deleted successfully' });
   } catch (error) {

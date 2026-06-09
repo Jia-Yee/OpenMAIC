@@ -1,7 +1,6 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getDb, initDb } from '@/lib/db';
-import { courses, grades, textbooks, subjects } from '@/lib/db/schema';
-import { eq } from 'drizzle-orm';
+import { courses } from '@/lib/db/schema';
 import { saveClassroomToServer } from '@/lib/server/classroom-server-db';
 
 let dbInitialized = false;
@@ -23,29 +22,31 @@ async function ensureDb() {
  *   courseIds?: string[]    // Optional: specific course IDs to import
  * }
  */
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { gradeId, courseIds } = body;
 
     const db = await ensureDb();
     
-    // Build query
-    let query = db.select({
+    // Query all matching courses
+    const allCourses = await db.select({
       id: courses.id,
       gradeId: courses.gradeId,
       title: courses.title,
       description: courses.description,
     }).from(courses);
 
-    // Filter by grade or course IDs if provided
-    if (courseIds && courseIds.length > 0) {
-      query = query.where(eq(courses.id, courseIds[0])); // Simplified for single ID
-    } else if (gradeId) {
-      query = query.where(eq(courses.gradeId, gradeId));
-    }
-
-    const coursesToImport = await query;
+    // Filter in memory based on conditions
+    const coursesToImport = allCourses.filter((course) => {
+      if (courseIds && courseIds.length > 0) {
+        return courseIds.includes(course.id);
+      }
+      if (gradeId) {
+        return course.gradeId === gradeId;
+      }
+      return true;
+    });
 
     let imported = 0;
     let skipped = 0;

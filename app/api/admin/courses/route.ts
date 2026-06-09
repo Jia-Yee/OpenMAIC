@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getDb, initDb, getSqliteDb } from '@/lib/db';
 import { courses, grades, textbooks, subjects } from '@/lib/db/schema';
 import { eq, asc } from 'drizzle-orm';
@@ -36,14 +36,14 @@ function saveDatabase() {
  * GET /api/admin/courses
  * Get all courses with grade info
  */
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const gradeId = searchParams.get('gradeId');
 
     const db = await ensureDb();
 
-    let query = db.select({
+    const result = await db.select({
       id: courses.id,
       gradeId: courses.gradeId,
       title: courses.title,
@@ -67,13 +67,9 @@ export async function GET(request: Request) {
       .leftJoin(subjects, eq(textbooks.subjectId, subjects.id))
       .orderBy(asc(courses.sortOrder));
 
-    if (gradeId) {
-      query = query.where(eq(courses.gradeId, gradeId));
-    }
+    const filtered = gradeId ? result.filter((c) => c.gradeId === gradeId) : result;
 
-    const result = await query;
-
-    return NextResponse.json({ courses: result });
+    return NextResponse.json({ courses: filtered });
   } catch (error) {
     console.error('Error fetching courses:', error);
     return NextResponse.json(
@@ -87,7 +83,7 @@ export async function GET(request: Request) {
  * POST /api/admin/courses
  * Create a new course
  */
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { gradeId, title, description, coverUrl, videoUrl, classroomId, duration, sortOrder, semester, isFree } = body;
@@ -116,7 +112,7 @@ export async function POST(request: Request) {
       createdAt: new Date(),
     };
 
-    const result = await db.insert(courses).values(newCourse);
+    await db.insert(courses).values(newCourse);
 
     // Save database to file
     saveDatabase();
@@ -124,7 +120,6 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       message: 'Course created successfully',
-      course: { ...newCourse, id: result.lastInsertRowId }
     });
   } catch (error) {
     console.error('Error creating course:', error);

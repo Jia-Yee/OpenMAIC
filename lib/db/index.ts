@@ -477,7 +477,7 @@ export async function initDb() {
     const checkGradesResult = sqliteDb.exec(`SELECT id FROM grades WHERE id IN 
       ('grade-rjb-4a', 'grade-rjb-4b', 'grade-rjb-5a', 'grade-rjb-5b', 'grade-rjb-6a', 'grade-rjb-6b')`);
     
-    const existingGradeIds = checkGradesResult[0]?.values?.map(v => v[0]) || [];
+    const existingGradeIds: string[] = checkGradesResult[0]?.values?.map((v: any) => v[0] as string) || [];
     const missingGrades = [
       { id: 'grade-rjb-4a', name: '四年级上册', price: 249, order: 6 },
       { id: 'grade-rjb-4b', name: '四年级下册', price: 249, order: 7 },

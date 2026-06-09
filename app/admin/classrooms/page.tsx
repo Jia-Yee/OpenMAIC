@@ -96,7 +96,7 @@ export default function ClassroomsPage() {
       
       // 更新科目列表
       const courseListWithSubjects = courseList as (Course & { subjectName?: string })[];
-      const allSubjects = [...new Set(courseListWithSubjects.map((c) => c.subjectName).filter(Boolean))];
+      const allSubjects = [...new Set(courseListWithSubjects.map((c) => c.subjectName).filter((s): s is string => Boolean(s)))];
       setSubjects(allSubjects);
       
       const coursesWithPrereqs = await Promise.all(

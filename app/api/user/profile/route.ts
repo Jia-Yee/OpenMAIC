@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDb, initDb } from '@/lib/db';
 import { users, subscriptions, courses } from '@/lib/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm';
 import { verifyToken } from '@/lib/auth';
 
 let dbInitialized = false;
@@ -83,7 +83,7 @@ export async function GET(request: Request) {
           sortOrder: courses.sortOrder,
         })
           .from(courses)
-          .where(courses.gradeId.in(activeGradeIds))
+          .where(inArray(courses.gradeId, activeGradeIds))
       : [];
     
     // Combine and deduplicate

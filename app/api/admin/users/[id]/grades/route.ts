@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getDb, initDb } from '@/lib/db';
 import { userGrades, grades, textbooks, subjects } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
@@ -18,9 +18,9 @@ async function ensureDb() {
  * GET /api/admin/users/[id]/grades
  * Get user's grade permissions
  */
-export async function GET(request: Request, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { id } = params;
+    const { id } = await params;
     
     const db = await ensureDb();
 
@@ -56,9 +56,9 @@ export async function GET(request: Request, { params }: { params: { id: string }
  * PUT /api/admin/users/[id]/grades
  * Update user's grade permissions
  */
-export async function PUT(request: Request, { params }: { params: { id: string } }) {
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { id } = params;
+    const { id } = await params;
     const body = await request.json();
     const { gradeIds } = body;
 

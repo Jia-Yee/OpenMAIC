@@ -44,6 +44,7 @@ import {
   deleteStageData,
   renameStage,
   getFirstSlideByStages,
+  loadStageData,
 } from '@/lib/utils/stage-storage';
 import { ThumbnailSlide } from '@/components/slide-renderer/components/ThumbnailSlide';
 import type { Slide } from '@/lib/types/slides';
@@ -160,17 +161,13 @@ function HomePage() {
       const list = await listStages();
       const classroomData = await Promise.all(
         list.map(async (classroom) => {
-          const stageData = await db.stages.get(classroom.id);
-          const scenes = await db.scenes.where('stageId').equals(classroom.id).toArray();
+          const stageData = await loadStageData(classroom.id);
           return {
             id: classroom.id,
             name: classroom.name,
             description: classroom.description,
             sceneCount: classroom.sceneCount,
-            data: {
-              stage: stageData,
-              scenes,
-            },
+            data: stageData || {},
           };
         })
       );

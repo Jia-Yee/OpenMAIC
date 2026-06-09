@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDb, initDb } from '@/lib/db';
 import { learningProgress, courses } from '@/lib/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, like } from 'drizzle-orm';
 import { verifyToken } from '@/lib/auth';
 
 let dbInitialized = false;
@@ -207,10 +207,10 @@ export async function POST(request: Request) {
       .leftJoin(courses, eq(learningProgress.courseId, courses.id))
       .where(and(
         eq(learningProgress.userId, userId),
-        courses.gradeId.equals(gradeId || '%'),
+        gradeId ? eq(courses.gradeId, gradeId) : like(courses.gradeId, '%'),
       ));
     
-    const progressMap: Record<string, { progress: number; completed: boolean; stars: number }> = {};
+    const progressMap: Record<string, { progress: number | null; completed: boolean | null; stars: number | null }> = {};
     results.forEach(r => {
       progressMap[r.courseId] = {
         progress: r.progress,
