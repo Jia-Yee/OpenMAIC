@@ -102,8 +102,7 @@ export default function AdminLogin() {
 
         {/* Footer */}
         <div className="mt-6 text-center text-sm text-gray-400">
-          <p>默认账号: admin / admin123</p>
-          <p className="mt-1">请在 .env.local 中配置管理员账号密码</p>
+          <p>请联系系统管理员获取登录账号</p>
         </div>
       </div>
     </div>

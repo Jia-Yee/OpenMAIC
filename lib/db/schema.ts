@@ -1,16 +1,14 @@
 import {
-  sqliteTable,
+  pgTable,
   text,
   integer,
-  real,
+  numeric,
   index,
   unique,
-} from 'drizzle-orm/sqlite-core';
+} from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
-// ==================== 用户相关 ====================
-
-export const users = sqliteTable('users', {
+export const users = pgTable('users', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   openid: text('openid').notNull().unique(),
   unionid: text('unionid'),
@@ -31,9 +29,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   subscriptions: many(subscriptions),
 }));
 
-// ==================== 课程相关 ====================
-
-export const subjects = sqliteTable('subjects', {
+export const subjects = pgTable('subjects', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   name: text('name').notNull(),
   code: text('code').unique(),
@@ -49,7 +45,7 @@ export const subjectsRelations = relations(subjects, ({ many }) => ({
   textbooks: many(textbooks),
 }));
 
-export const textbooks = sqliteTable('textbooks', {
+export const textbooks = pgTable('textbooks', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   subjectId: text('subject_id').notNull().references(() => subjects.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
@@ -71,15 +67,15 @@ export const textbooksRelations = relations(textbooks, ({ one, many }) => ({
   grades: many(grades),
 }));
 
-export const grades = sqliteTable('grades', {
+export const grades = pgTable('grades', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   textbookId: text('textbook_id').notNull().references(() => textbooks.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   code: text('code'),
   description: text('description'),
   coverUrl: text('cover_url'),
-  price: real('price').default(0),
-  originalPrice: real('original_price'),
+  price: numeric('price').default('0'),
+  originalPrice: numeric('original_price'),
   sortOrder: integer('sort_order').default(0),
   isActive: integer('is_active', { mode: 'boolean' }).default(true),
 }, (table) => ({
@@ -94,7 +90,7 @@ export const gradesRelations = relations(grades, ({ one, many }) => ({
   courses: many(courses),
 }));
 
-export const courses = sqliteTable('courses', {
+export const courses = pgTable('courses', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   gradeId: text('grade_id').notNull().references(() => grades.id, { onDelete: 'cascade' }),
   title: text('title').notNull(),
@@ -120,7 +116,7 @@ export const coursesRelations = relations(courses, ({ one, many }) => ({
   prerequisites: many(coursePrerequisites),
 }));
 
-export const coursePrerequisites = sqliteTable('course_prerequisites', {
+export const coursePrerequisites = pgTable('course_prerequisites', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   courseId: text('course_id').notNull().references(() => courses.id, { onDelete: 'cascade' }),
   prerequisiteId: text('prerequisite_id').notNull().references(() => courses.id, { onDelete: 'cascade' }),
@@ -142,9 +138,7 @@ export const coursePrerequisitesRelations = relations(coursePrerequisites, ({ on
   }),
 }));
 
-// ==================== 用户年级权限 ====================
-
-export const userGrades = sqliteTable('user_grades', {
+export const userGrades = pgTable('user_grades', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   gradeId: text('grade_id').notNull().references(() => grades.id, { onDelete: 'cascade' }),
@@ -167,16 +161,14 @@ export const userGradesRelations = relations(userGrades, ({ one }) => ({
   }),
 }));
 
-// ==================== 订阅相关 ====================
-
-export const subscriptions = sqliteTable('subscriptions', {
+export const subscriptions = pgTable('subscriptions', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   gradeId: text('grade_id').notNull().references(() => grades.id, { onDelete: 'cascade' }),
   orderNo: text('order_no').notNull().unique(),
   tradeNo: text('trade_no'),
-  amount: real('amount').notNull(),
-  status: text('status').default('pending').notNull(), // pending/paid/expired/refunded
+  amount: numeric('amount').notNull(),
+  status: text('status').default('pending').notNull(),
   paidAt: integer('paid_at', { mode: 'timestamp' }),
   expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
   createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
@@ -199,15 +191,13 @@ export const subscriptionsRelations = relations(subscriptions, ({ one }) => ({
   }),
 }));
 
-// ==================== 学习进度相关 ====================
-
-export const learningProgress = sqliteTable('learning_progress', {
+export const learningProgress = pgTable('learning_progress', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   courseId: text('course_id').notNull().references(() => courses.id, { onDelete: 'cascade' }),
-  progress: integer('progress').default(0), // 0-100
+  progress: integer('progress').default(0),
   completed: integer('completed', { mode: 'boolean' }).default(false),
-  stars: integer('stars').default(0), // 0-3
+  stars: integer('stars').default(0),
   lastAccessAt: integer('last_access_at', { mode: 'timestamp' }),
   createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
@@ -228,13 +218,11 @@ export const learningProgressRelations = relations(learningProgress, ({ one }) =
   }),
 }));
 
-// ==================== 微信登录相关 ====================
-
-export const wechatSessions = sqliteTable('wechat_sessions', {
+export const wechatSessions = pgTable('wechat_sessions', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   sessionKey: text('session_key').notNull().unique(),
   openid: text('openid'),
-  status: text('status').default('pending').notNull(), // pending/scanned/confirmed/expired
+  status: text('status').default('pending').notNull(),
   qrCodeUrl: text('qr_code_url'),
   expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
   createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
@@ -243,8 +231,6 @@ export const wechatSessions = sqliteTable('wechat_sessions', {
   sessionKeyIdx: index('wechat_sessions_session_key_idx').on(table.sessionKey),
   statusIdx: index('wechat_sessions_status_idx').on(table.status),
 }));
-
-// ==================== 类型导出 ====================
 
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;

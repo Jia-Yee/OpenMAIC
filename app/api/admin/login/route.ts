@@ -12,8 +12,15 @@ export async function POST(request: Request) {
       );
     }
 
-    const adminUsername = process.env.ADMIN_USERNAME || 'admin';
-    const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
+    const adminUsername = process.env.ADMIN_USERNAME;
+    const adminPassword = process.env.ADMIN_PASSWORD;
+
+    if (!adminUsername || !adminPassword) {
+      return NextResponse.json(
+        { success: false, error: '管理员账号未配置，请联系系统管理员' },
+        { status: 500 }
+      );
+    }
 
     if (username === adminUsername && password === adminPassword) {
       const adminToken = Buffer.from(`${username}:${password}`).toString('base64');
