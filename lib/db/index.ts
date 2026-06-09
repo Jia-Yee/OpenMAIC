@@ -20,10 +20,11 @@ export async function initDb() {
       await ensurePgTables(client);
     } else {
       const { sql, createPool } = await import('@vercel/postgres');
+      const { drizzle: vercelDrizzle } = await import('drizzle-orm/vercel-postgres');
       const pool = createPool({
         connectionString: process.env.POSTGRES_URL,
       });
-      db = drizzle(pool, { schema });
+      db = vercelDrizzle(pool, { schema });
       await ensurePgTablesVercel(sql);
     }
   } else {
