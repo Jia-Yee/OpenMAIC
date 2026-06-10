@@ -25,6 +25,7 @@ export interface ClassroomListItem {
   name: string;
   description: string;
   sceneCount: number;
+  dataUrl: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -141,6 +142,7 @@ export async function listClassroomsFromServer(): Promise<ClassroomListItem[]> {
     name: row.name,
     description: row.description || 'AI 生成的交互式课堂',
     sceneCount: row.sceneCount || 0,
+    dataUrl: row.dataUrl || '',
     createdAt: row.createdAt ? new Date(row.createdAt * 1000).toISOString() : new Date().toISOString(),
     updatedAt: row.updatedAt ? new Date(row.updatedAt * 1000).toISOString() : new Date().toISOString(),
   }));

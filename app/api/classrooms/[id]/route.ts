@@ -4,7 +4,8 @@ import type { SceneRecord } from '@/lib/utils/database';
 import { ensureDb } from '@/lib/db';
 import { classrooms } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
-import { getClassroomData } from '@/lib/server/blob-storage';
+import { getClassroomData, getMediaFile, listClassroomMedia } from '@/lib/server/blob-storage';
+import { restoreMediaDataUrls } from '@/lib/server/media-extractor';
 
 let dbInitialized = false;
 
@@ -78,10 +79,28 @@ export async function GET(
       
       // 从 Blob 获取完整数据
       const data = (serverClassroom.dataUrl ? await getClassroomData(classroomId) : null) || {} as any;
-      if (serverClassroom.dataUrl && data) {
-        console.log('Fetched classroom data from Blob');
-      } else {
-        console.log('No dataUrl found, using empty data');
+      
+      // 下载媒体文件并还原为data URL
+      const mediaData: Record<string, string> = {};
+      if (serverClassroom.dataUrl) {
+        const mediaFiles = await listClassroomMedia(classroomId);
+        console.log(`Found ${mediaFiles.length} media files to download`);
+        
+        for (const mediaFile of mediaFiles) {
+          if (!mediaFile) continue;
+          const mediaId = mediaFile.replace(/\.[^.]+$/, '');
+          const dataUrl = await getMediaFile(classroomId, mediaFile);
+          if (dataUrl) {
+            mediaData[mediaId] = dataUrl;
+          }
+        }
+        
+        // 还原媒体文件为data URL
+        if (Object.keys(mediaData).length > 0 && data.stage && data.scenes) {
+          const restoredData = restoreMediaDataUrls(data, mediaData);
+          data.stage = restoredData.stage;
+          data.scenes = restoredData.scenes;
+        }
       }
       
       stage = {

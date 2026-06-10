@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { ensureDb } from '@/lib/db';
 import { courses, grades, textbooks, subjects, classrooms } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
-import { uploadClassroomData } from '@/lib/server/blob-storage';
+import { uploadClassroomData, uploadMediaFile } from '@/lib/server/blob-storage';
+import { extractMediaFromClassroom, replaceMediaUrlsInClassroom } from '@/lib/server/media-extractor';
 
 /**
  * POST /api/admin/classrooms/[id]/upload
@@ -13,7 +14,7 @@ import { uploadClassroomData } from '@/lib/server/blob-storage';
  *   name: string,
  *   description?: string,
  *   sceneCount: number,
- *   data: any (full classroom content)
+ *   data: any (full classroom content including stage and scenes)
  * }
  */
 export async function POST(
@@ -39,7 +40,23 @@ export async function POST(
     // 上传完整数据到 Vercel Blob
     let dataUrl = '';
     if (data && Object.keys(data).length > 0) {
-      dataUrl = await uploadClassroomData(classroomId, data);
+      // 提取媒体文件
+      const mediaFiles = extractMediaFromClassroom(data);
+      console.log(`Found ${mediaFiles.length} media files to upload`);
+      
+      // 上传媒体文件并构建媒体URL映射
+      const mediaMap: Record<string, string> = {};
+      for (const media of mediaFiles) {
+        const url = await uploadMediaFile(classroomId, media.filename, media.src);
+        mediaMap[media.id] = url;
+        console.log(`Uploaded media ${media.id} to ${url}`);
+      }
+      
+      // 将数据URL替换为Blob URL
+      const processedData = replaceMediaUrlsInClassroom(data, mediaMap);
+      
+      // 上传处理后的JSON数据
+      dataUrl = await uploadClassroomData(classroomId, processedData);
       console.log(`Uploaded classroom data to Blob: ${dataUrl}`);
     }
 
@@ -132,6 +149,7 @@ export async function POST(
     return NextResponse.json({
       success: false,
       error: 'Failed to upload classroom',
+      message: error instanceof Error ? error.message : 'Unknown error',
     }, { status: 500 });
   }
 }
