@@ -161,7 +161,7 @@ export default function ProfilePage() {
 
         {/* App Info */}
         <div className="mt-8 text-center text-sm text-gray-400">
-          <p>三叶草 v1.0.0</p>
+          <p>韦达数学 v1.0.0</p>
           <p className="mt-1">Powered by AI Multi-Agent Technology</p>
         </div>
       </main>

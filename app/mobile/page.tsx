@@ -174,7 +174,7 @@ export default function MobileHome() {
       <header className="bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg sticky top-0 z-10">
         <div className="px-4 py-4 flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold">三叶草</h1>
+            <h1 className="text-xl font-bold">韦达数学</h1>
             <p className="text-xs text-blue-100 mt-1">AI 交互式课堂</p>
           </div>
           <div className="flex items-center gap-2">
@@ -330,7 +330,7 @@ export default function MobileHome() {
 
       {/* Footer */}
       <footer className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-3 text-center text-xs text-gray-500">
-        <p>三叶草 v1.0.0</p>
+        <p>韦达数学 v1.0.0</p>
         <p className="mt-1">Powered by AI Multi-Agent Technology</p>
       </footer>
     </div>

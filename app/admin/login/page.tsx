@@ -58,7 +58,7 @@ export default function AdminLogin() {
           <div className="w-20 h-20 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
             <span className="text-4xl">🎓</span>
           </div>
-          <h1 className="text-2xl font-bold text-gray-800">三叶草管理后台</h1>
+          <h1 className="text-2xl font-bold text-gray-800">韦达数学管理后台</h1>
           <p className="text-gray-500 mt-2">管理员登录</p>
         </div>
 

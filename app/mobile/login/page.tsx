@@ -126,7 +126,7 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-blue-600 mb-2">三叶草</h1>
+          <h1 className="text-3xl font-bold text-blue-600 mb-2">韦达数学</h1>
           <p className="text-gray-500">AI 交互式学习平台</p>
         </div>
 

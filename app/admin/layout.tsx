@@ -93,7 +93,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             </div>
             {sidebarOpen && (
               <div>
-                <h1 className="font-bold text-lg">三叶草管理</h1>
+                <h1 className="font-bold text-lg">韦达数学管理</h1>
                 <p className="text-xs text-indigo-300">Admin Panel</p>
               </div>
             )}
@@ -143,7 +143,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <h2 className="text-xl font-bold text-gray-800">
                 {navItems.find((item) => pathname.startsWith(item.href))?.label || '管理面板'}
               </h2>
-              <p className="text-sm text-gray-500">欢迎来到三叶草管理后台</p>
+              <p className="text-sm text-gray-500">欢迎来到韦达数学管理后台</p>
             </div>
             <div className="flex items-center gap-4">
               <div className="text-sm text-gray-600">{adminUser?.username || '管理员'}</div>
