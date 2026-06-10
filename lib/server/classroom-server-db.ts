@@ -6,7 +6,7 @@
  * when they are connected to the same server.
  */
 
-import { getDb } from '@/lib/db';
+import { ensureDb } from '@/lib/db';
 import { classrooms, type Classroom } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 
@@ -39,7 +39,7 @@ export async function saveClassroomToServer(classroom: {
   sceneCount: number;
   data: any;
 }): Promise<void> {
-  const db = await getDb();
+  const db = await ensureDb();
   const now = Math.floor(Date.now() / 1000);
 
   await db.insert(classrooms).values({
@@ -74,7 +74,7 @@ export async function updateClassroomOnServer(classroom: {
   sceneCount?: number;
   data?: any;
 }): Promise<void> {
-  const db = await getDb();
+  const db = await ensureDb();
   const now = Math.floor(Date.now() / 1000);
 
   const updateData: Record<string, any> = {
@@ -97,7 +97,7 @@ export async function updateClassroomOnServer(classroom: {
  * Get a classroom from the database
  */
 export async function getClassroomFromServer(id: string): Promise<PersistedClassroom | null> {
-  const db = await getDb();
+  const db = await ensureDb();
 
   const result = await db.select()
     .from(classrooms)
@@ -123,7 +123,7 @@ export async function getClassroomFromServer(id: string): Promise<PersistedClass
  * Get all classrooms from the database (for listing)
  */
 export async function listClassroomsFromServer(): Promise<ClassroomListItem[]> {
-  const db = await getDb();
+  const db = await ensureDb();
 
   const result = await db.select()
     .from(classrooms)
@@ -143,7 +143,7 @@ export async function listClassroomsFromServer(): Promise<ClassroomListItem[]> {
  * Delete a classroom from the database
  */
 export async function deleteClassroomFromServer(id: string): Promise<void> {
-  const db = await getDb();
+  const db = await ensureDb();
 
   await db.delete(classrooms)
     .where(eq(classrooms.id, id));
@@ -155,7 +155,7 @@ export async function deleteClassroomFromServer(id: string): Promise<void> {
  * Check if a classroom exists on the server
  */
 export async function classroomExistsOnServer(id: string): Promise<boolean> {
-  const db = await getDb();
+  const db = await ensureDb();
 
   const result = await db.select({ id: classrooms.id })
     .from(classrooms)

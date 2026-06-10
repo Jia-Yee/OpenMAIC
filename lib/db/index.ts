@@ -999,6 +999,13 @@ export function getDb() {
   return db;
 }
 
+export async function ensureDb() {
+  if (!db) {
+    await initDb();
+  }
+  return db;
+}
+
 export function getSqliteDb() {
   return sqliteDb;
 }
