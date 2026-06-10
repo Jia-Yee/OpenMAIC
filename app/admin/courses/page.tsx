@@ -650,7 +650,7 @@ export default function CoursesPage() {
                             const classroom = classrooms.find((c) => c.id === course.classroomId);
                             return classroom ? (
                               <a
-                                href={`/classroom/${classroom.id}`}
+                                href={`/mobile/classroom/${classroom.id}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="text-sm text-indigo-600 hover:text-indigo-800 hover:underline truncate max-w-xs"
@@ -793,7 +793,7 @@ export default function CoursesPage() {
                       <td className="px-6 py-4">
                         <div className="flex gap-2">
                           <a
-                            href={`/classroom/${classroom.id}`}
+                            href={`/mobile/classroom/${classroom.id}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="px-3 py-1 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition text-sm"
