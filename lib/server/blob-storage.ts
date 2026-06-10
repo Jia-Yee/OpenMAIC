@@ -1,90 +1,74 @@
 const BLOB_STORE_ID = process.env.BLOB_STORE_ID || 'store_dEn2beTlBFsQ3VGR';
-const BLOB_TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
+
+async function getBlobModule(): Promise<{ put: any; get: any; del: any; list: any } | null> {
+  try {
+    const blob = await import('@vercel/blob');
+    return {
+      put: blob.put,
+      get: blob.get,
+      del: blob.del,
+      list: blob.list,
+    };
+  } catch (e) {
+    try {
+      const blob = require('@vercel/blob');
+      return {
+        put: blob.put,
+        get: blob.get,
+        del: blob.del,
+        list: blob.list,
+      };
+    } catch {
+      console.warn('@vercel/blob not available, will use when deployed to Vercel');
+      return null;
+    }
+  }
+}
 
 export async function uploadClassroomData(classroomId: string, data: any): Promise<string> {
-  if (!BLOB_TOKEN) {
-    throw new Error('BLOB_READ_WRITE_TOKEN is not configured');
+  const blobModule = await getBlobModule();
+  
+  if (blobModule) {
+    const { url } = await blobModule.put(`classrooms/${classroomId}.json`, JSON.stringify(data), {
+      access: 'private',
+    });
+    return url;
   }
 
-  const jsonData = JSON.stringify(data);
-  const response = await fetch(`https://blob.vercel-storage.com/${BLOB_STORE_ID}/classrooms/${classroomId}.json`, {
-    method: 'PUT',
-    headers: {
-      'Authorization': `Bearer ${BLOB_TOKEN}`,
-      'Content-Type': 'application/json',
-      'x-vercel-access': 'private',
-    },
-    body: jsonData,
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Failed to upload blob: ${response.statusText} - ${errorText}`);
-  }
-
-  const result = await response.json();
-  return result.url;
+  throw new Error('@vercel/blob module not available. This feature requires deployment to Vercel.');
 }
 
 export async function getClassroomData(classroomId: string): Promise<any | null> {
-  if (!BLOB_TOKEN) {
-    return null;
-  }
-
-  try {
-    const response = await fetch(`https://blob.vercel-storage.com/${BLOB_STORE_ID}/classrooms/${classroomId}.json`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${BLOB_TOKEN}`,
-      },
-    });
-
-    if (!response.ok) {
-      return null;
+  const blobModule = await getBlobModule();
+  
+  if (blobModule) {
+    const result = await blobModule.get(`classrooms/${classroomId}.json`);
+    if (result.data) {
+      return JSON.parse(await result.data.text());
     }
-
-    return await response.json();
-  } catch (e) {
-    console.error('Error fetching classroom data:', e);
     return null;
   }
+
+  return null;
 }
 
 export async function deleteClassroomData(classroomId: string): Promise<void> {
-  if (!BLOB_TOKEN) {
-    return;
+  const blobModule = await getBlobModule();
+  
+  if (blobModule) {
+    await blobModule.del(`classrooms/${classroomId}.json`);
   }
-
-  await fetch(`https://blob.vercel-storage.com/${BLOB_STORE_ID}/classrooms/${classroomId}.json`, {
-    method: 'DELETE',
-    headers: {
-      'Authorization': `Bearer ${BLOB_TOKEN}`,
-    },
-  });
 }
 
 export async function listClassroomFiles(): Promise<string[]> {
-  if (!BLOB_TOKEN) {
-    return [];
+  const blobModule = await getBlobModule();
+  
+  if (blobModule) {
+    const { blobs } = await blobModule.list({ prefix: 'classrooms/' });
+    return blobs
+      .filter((blob: any) => blob.path.endsWith('.json'))
+      .map((blob: any) => blob.path.replace('classrooms/', '').replace('.json', ''));
   }
 
-  try {
-    const response = await fetch(`https://blob.vercel-storage.com/${BLOB_STORE_ID}?prefix=classrooms/`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${BLOB_TOKEN}`,
-      },
-    });
-
-    if (!response.ok) {
-      return [];
-    }
-
-    const result = await response.json();
-    return result.blobs.map((blob: any) => 
-      blob.pathname.replace('classrooms/', '').replace('.json', '')
-    );
-  } catch {
-    return [];
-  }
+  return [];
 }
