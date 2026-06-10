@@ -84,8 +84,8 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     if (body.videoUrl !== undefined) updates.videoUrl = body.videoUrl;
     if (body.classroomId !== undefined) updates.classroomId = body.classroomId;
     if (body.duration !== undefined) updates.duration = body.duration;
-    if (body.isActive !== undefined) updates.isActive = body.isActive;
-    if (body.isFree !== undefined) updates.isFree = body.isFree;
+    if (body.isActive !== undefined) updates.isActive = body.isActive ? 1 : 0;
+    if (body.isFree !== undefined) updates.isFree = body.isFree ? 1 : 0;
     if (body.sortOrder !== undefined) updates.sortOrder = body.sortOrder;
 
     await db.update(courses)
