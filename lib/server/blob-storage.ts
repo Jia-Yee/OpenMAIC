@@ -12,6 +12,7 @@ export async function uploadClassroomData(classroomId: string, data: any): Promi
     headers: {
       'Authorization': `Bearer ${BLOB_TOKEN}`,
       'Content-Type': 'application/json',
+      'x-vercel-access': 'private',
     },
     body: jsonData,
   });
