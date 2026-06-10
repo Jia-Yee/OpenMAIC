@@ -49,40 +49,40 @@ export default function MobileClassroomPage() {
       console.log('正在从服务器加载课程:', classroomId);
 
       // 从服务器 API 加载课程
-      const response = await fetch(`/api/classrooms?id=${classroomId}`);
+      const response = await fetch(`/api/classrooms/${classroomId}`);
       const result = await response.json();
 
-      if (!result.success || !result.classroom) {
+      if (!result.success) {
         console.error('课程不存在:', classroomId);
         alert('课程不存在，请返回课程列表');
         router.push('/mobile');
         return;
       }
 
-      const data = result.classroom;
-      console.log(`加载成功: ${data.name || '未命名'}, ${data.sceneCount} 个场景`);
+      const data = result;
+      console.log(`加载成功: ${data.title || '未命名'}, ${data.sceneCount} 个场景`);
 
       setClassroom({
         id: data.id,
-        title: data.name || '未命名课堂',
+        title: data.title || '未命名课堂',
         description: data.description || 'AI 生成的交互式课堂',
-        accessGranted: true,
+        accessGranted: data.accessGranted,
       });
 
-      // 如果服务器返回了完整数据，使用它；否则需要单独加载场景
-      if (data.data && data.data.scenes) {
-        const sceneList: SceneData[] = data.data.scenes.map((scene: any, index: number) => ({
+      // 如果服务器返回了场景数据，使用它
+      if (data.scenes && Array.isArray(data.scenes)) {
+        const sceneList: SceneData[] = data.scenes.map((scene: any, index: number) => ({
           id: scene.id,
           title: scene.title,
           type: scene.type,
-          order: index,
+          order: scene.order || index,
           content: scene.content,
           actions: scene.actions || [],
-          whiteboards: scene.whiteboards || [],
+          whiteboards: scene.whiteboard || [],
         }));
         setScenes(sceneList);
       } else {
-        // 如果服务器没有返回完整数据，提示用户
+        // 如果服务器没有返回完整课程数据，提示用户
         console.warn('服务器未返回完整课程数据');
         setScenes([]);
       }
