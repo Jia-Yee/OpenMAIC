@@ -1,39 +1,27 @@
 import { NextResponse } from 'next/server';
-import { saveClassroomToServer } from '@/lib/server/classroom-server-db';
-import { getDb, initDb } from '@/lib/db';
-import { courses, grades, textbooks, subjects } from '@/lib/db/schema';
+import { ensureDb } from '@/lib/db';
+import { courses, grades, textbooks, subjects, classrooms } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
-
-let dbInitialized = false;
-
-async function ensureDb() {
-  if (!dbInitialized) {
-    await initDb();
-    dbInitialized = true;
-  }
-  return getDb();
-}
 
 /**
  * POST /api/admin/classrooms/sync-all
- * Sync all classrooms from request body to server
+ * Sync classroom metadata to server (without full data content)
  * 
  * Body: {
  *   classrooms: Array<{
  *     id: string,
  *     name: string,
  *     description?: string,
- *     sceneCount: number,
- *     data: any
+ *     sceneCount: number
  *   }>
  * }
  */
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { classrooms } = body;
+    const { classrooms: classroomsData } = body;
 
-    if (!classrooms || !Array.isArray(classrooms)) {
+    if (!classroomsData || !Array.isArray(classroomsData)) {
       return NextResponse.json({
         success: false,
         error: 'classrooms array is required',
@@ -43,20 +31,32 @@ export async function POST(request: Request) {
     const db = await ensureDb();
     let syncedCount = 0;
     let skippedCount = 0;
+    const now = Math.floor(Date.now() / 1000);
 
-    for (const classroom of classrooms) {
+    for (const classroom of classroomsData) {
       if (!classroom.id) continue;
 
       try {
-        await saveClassroomToServer({
+        // 只同步元数据，不包含完整的 data 字段
+        // data 字段将在首次访问时从 IndexedDB 补充
+        await db.insert(classrooms).values({
           id: classroom.id,
           name: classroom.name || 'Untitled',
           description: classroom.description,
           sceneCount: classroom.sceneCount || 0,
-          data: classroom.data || {},
+          createdAt: now,
+          updatedAt: now,
+        }).onConflictDoUpdate({
+          target: classrooms.id,
+          set: {
+            name: classroom.name || 'Untitled',
+            description: classroom.description,
+            sceneCount: classroom.sceneCount || 0,
+            updatedAt: now,
+          },
         });
 
-        // Also create/update course in SQLite
+        // 确保课程记录存在
         const existingCourse = await db.select()
           .from(courses)
           .where(eq(courses.id, classroom.id))
@@ -116,7 +116,7 @@ export async function POST(request: Request) {
               sortOrder: 0,
               isActive: 1,
               isFree: 0,
-              createdAt: Math.floor(Date.now() / 1000),
+              createdAt: now,
             } as any);
           }
         }
@@ -130,7 +130,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      message: `Synced ${syncedCount} classrooms, skipped ${skippedCount}`,
+      message: `Synced ${syncedCount} classrooms (metadata only), skipped ${skippedCount}`,
       synced: syncedCount,
       skipped: skippedCount,
     });

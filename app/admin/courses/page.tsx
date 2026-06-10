@@ -193,35 +193,47 @@ export default function CoursesPage() {
     try {
       setSyncing(true);
       const stages = await db.stages.orderBy('updatedAt').reverse().toArray();
-      const classroomData = await Promise.all(
-        stages.map(async (stage) => {
+      let syncedCount = 0;
+      let failedCount = 0;
+
+      for (const stage of stages) {
+        try {
           const sceneRecords = await db.scenes.where('stageId').equals(stage.id).toArray();
-          return {
-            id: stage.id,
-            name: stage.name,
-            description: stage.description,
-            sceneCount: sceneRecords.length,
-            data: {
-              stage: stage,
-              scenes: sceneRecords,
-            },
-          };
-        })
-      );
+          
+          const res = await fetch(`/api/admin/classrooms/${stage.id}/upload`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              id: stage.id,
+              name: stage.name,
+              description: stage.description,
+              sceneCount: sceneRecords.length,
+              data: {
+                stage: stage,
+                scenes: sceneRecords,
+              },
+            }),
+          });
 
-      const res = await fetch('/api/admin/classrooms/sync-all', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ classrooms: classroomData }),
-      });
-
-      const result = await res.json();
-      if (result.success) {
-        alert(`已同步 ${result.synced} 个课堂到服务器！`);
-        fetchClassrooms();
-      } else {
-        alert('同步失败：' + (result.error || '未知错误'));
+          const result = await res.json();
+          if (result.success) {
+            syncedCount++;
+          } else {
+            failedCount++;
+            console.error(`Failed to sync classroom ${stage.id}:`, result.error);
+          }
+        } catch (error) {
+          failedCount++;
+          console.error(`Failed to sync classroom ${stage.id}:`, error);
+        }
       }
+
+      if (failedCount === 0) {
+        alert(`已成功同步 ${syncedCount} 个课堂到服务器！`);
+      } else {
+        alert(`同步完成：成功 ${syncedCount} 个，失败 ${failedCount} 个`);
+      }
+      fetchClassrooms();
     } catch (error) {
       console.error('Error syncing classrooms:', error);
       alert('同步失败');

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb, initDb } from '@/lib/db';
 import { courses } from '@/lib/db/schema';
 import { saveClassroomToServer } from '@/lib/server/classroom-server-db';
+import { uploadClassroomData } from '@/lib/server/blob-storage';
 
 let dbInitialized = false;
 
@@ -54,22 +55,26 @@ export async function POST(request: NextRequest) {
     for (const course of coursesToImport) {
       // Create classroom data from course
       const classroomData = {
-        id: course.id,
-        name: course.title,
-        description: course.description || '从课程导入的课堂',
-        sceneCount: 1,
-        data: {
-          stage: {
-            name: course.title,
-            description: course.description || '',
-            createdAt: Math.floor(Date.now() / 1000),
-          },
-          scenes: [],
+        stage: {
+          name: course.title,
+          description: course.description || '',
+          createdAt: Math.floor(Date.now() / 1000),
         },
+        scenes: [],
       };
 
       try {
-        await saveClassroomToServer(classroomData);
+        // Upload data to Blob
+        const dataUrl = await uploadClassroomData(course.id, classroomData);
+        
+        // Save metadata to database
+        await saveClassroomToServer({
+          id: course.id,
+          name: course.title,
+          description: course.description || '从课程导入的课堂',
+          sceneCount: 1,
+          dataUrl: dataUrl,
+        });
         imported++;
       } catch (e) {
         console.error(`Failed to import course ${course.id}:`, e);

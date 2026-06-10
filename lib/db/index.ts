@@ -226,7 +226,7 @@ async function ensurePgTables(client: any) {
           name TEXT NOT NULL,
           description TEXT,
           scene_count INTEGER DEFAULT 0,
-          data TEXT,
+          data_url TEXT,
           created_at INTEGER,
           updated_at INTEGER
         )
@@ -254,7 +254,7 @@ async function ensurePgTables(client: any) {
           name TEXT NOT NULL,
           description TEXT,
           scene_count INTEGER DEFAULT 0,
-          data TEXT,
+          data_url TEXT,
           created_at INTEGER,
           updated_at INTEGER
         )
@@ -416,7 +416,7 @@ async function ensurePgTablesVercel(sql: any) {
           name TEXT NOT NULL,
           description TEXT,
           scene_count INTEGER DEFAULT 0,
-          data TEXT,
+          data_url TEXT,
           created_at INTEGER,
           updated_at INTEGER
         )
@@ -444,7 +444,7 @@ async function ensurePgTablesVercel(sql: any) {
           name TEXT NOT NULL,
           description TEXT,
           scene_count INTEGER DEFAULT 0,
-          data TEXT,
+          data_url TEXT,
           created_at INTEGER,
           updated_at INTEGER
         )

@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server';
 import { db, initDatabase } from '@/lib/utils/database';
 import type { SceneRecord } from '@/lib/utils/database';
+import { ensureDb } from '@/lib/db';
+import { classrooms } from '@/lib/db/schema';
+import { eq } from 'drizzle-orm';
+import { getClassroomData } from '@/lib/server/blob-storage';
 
-// 确保数据库已初始化
 let dbInitialized = false;
 
 async function ensureDbInit() {
@@ -24,37 +27,78 @@ export async function GET(
     const params = await context.params;
     const classroomId = params.id;
     
-    console.log('Fetching classroom from database:', classroomId);
+    console.log('Fetching classroom:', classroomId);
     
-    // 确保数据库已初始化
-    await ensureDbInit();
+    // 先尝试从 IndexedDB 获取（客户端缓存）
+    let stage = null;
+    let scenes = [];
     
-    // 从 IndexedDB 获取课程信息
-    const stage = await db.stages.get(classroomId);
-    
-    if (!stage) {
-      return NextResponse.json({ 
-        success: false,
-        error: 'Course not found',
-        message: `Course with ID "${classroomId}" does not exist in database`
-      }, { status: 404 });
+    try {
+      await ensureDbInit();
+      stage = await db.stages.get(classroomId);
+      
+      if (stage) {
+        const sceneRecords = await db.scenes.where('stageId').equals(classroomId).sortBy('order');
+        scenes = sceneRecords.map((record: SceneRecord) => ({
+          id: record.id,
+          type: record.type,
+          order: record.order,
+          title: record.title,
+          content: record.content,
+          actions: record.actions || [],
+          whiteboard: record.whiteboard || [],
+        }));
+        console.log(`Found ${scenes.length} scenes from IndexedDB`);
+      }
+    } catch (indexedDbError) {
+      console.warn('Failed to get classroom from IndexedDB, falling back to server:', indexedDbError);
     }
     
-    // 获取该课程的所有场景
-    const sceneRecords = await db.scenes.where('stageId').equals(classroomId).sortBy('order');
-    
-    // 转换场景数据格式
-    const scenes = sceneRecords.map((record: SceneRecord) => ({
-      id: record.id,
-      type: record.type,
-      order: record.order,
-      title: record.title,
-      content: record.content,
-      actions: record.actions || [],
-      whiteboard: record.whiteboard || [],
-    }));
-    
-    console.log(`Found ${scenes.length} scenes for classroom ${classroomId}`);
+    // 如果 IndexedDB 没有，尝试从服务器获取
+    if (!stage) {
+      console.log('Fetching classroom from server:', classroomId);
+      
+      const pgDb = await ensureDb();
+      
+      // 从 PostgreSQL 获取元数据
+      const results = await pgDb.select()
+        .from(classrooms)
+        .where(eq(classrooms.id, classroomId))
+        .limit(1);
+      
+      if (results.length === 0) {
+        return NextResponse.json({ 
+          success: false,
+          error: 'Course not found',
+          message: `Course with ID "${classroomId}" does not exist`
+        }, { status: 404 });
+      }
+      
+      const serverClassroom = results[0];
+      
+      // 从 Blob 获取完整数据
+      const data = (serverClassroom.dataUrl ? await getClassroomData(classroomId) : null) || {} as any;
+      if (serverClassroom.dataUrl && data) {
+        console.log('Fetched classroom data from Blob');
+      } else {
+        console.log('No dataUrl found, using empty data');
+      }
+      
+      stage = {
+        id: serverClassroom.id,
+        name: serverClassroom.name,
+        description: serverClassroom.description,
+        createdAt: (serverClassroom.createdAt || 0) * 1000,
+        updatedAt: (serverClassroom.updatedAt || 0) * 1000,
+        languageDirective: data.languageDirective,
+        style: data.style,
+        currentSceneId: data.currentSceneId,
+        agentIds: data.agentIds,
+      };
+      
+      scenes = data.scenes || [];
+      console.log(`Found ${scenes.length} scenes from Blob`);
+    }
     
     // 返回课程详情（包含场景）
     return NextResponse.json({ 

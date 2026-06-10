@@ -159,30 +159,42 @@ function HomePage() {
   const handleSyncAllClassrooms = async () => {
     try {
       const list = await listStages();
-      const classroomData = await Promise.all(
-        list.map(async (classroom) => {
+      let syncedCount = 0;
+      let failedCount = 0;
+
+      for (const classroom of list) {
+        try {
           const stageData = await loadStageData(classroom.id);
-          return {
-            id: classroom.id,
-            name: classroom.name,
-            description: classroom.description,
-            sceneCount: classroom.sceneCount,
-            data: stageData || {},
-          };
-        })
-      );
+          
+          const response = await fetch(`/api/admin/classrooms/${classroom.id}/upload`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              id: classroom.id,
+              name: classroom.name,
+              description: classroom.description,
+              sceneCount: classroom.sceneCount,
+              data: stageData || {},
+            }),
+          });
 
-      const response = await fetch('/api/admin/classrooms/sync-all', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ classrooms: classroomData }),
-      });
+          const result = await response.json();
+          if (result.success) {
+            syncedCount++;
+          } else {
+            failedCount++;
+            console.error(`Failed to sync classroom ${classroom.id}:`, result.error);
+          }
+        } catch (err) {
+          failedCount++;
+          console.error(`Failed to sync classroom ${classroom.id}:`, err);
+        }
+      }
 
-      const result = await response.json();
-      if (result.success) {
-        toast.success(`已同步 ${result.synced} 个课堂到服务器`);
+      if (failedCount === 0) {
+        toast.success(`已成功同步 ${syncedCount} 个课堂到服务器`);
       } else {
-        toast.error(result.error || '同步失败');
+        toast.warning(`同步完成：成功 ${syncedCount} 个，失败 ${failedCount} 个`);
       }
     } catch (err) {
       log.error('Failed to sync classrooms:', err);

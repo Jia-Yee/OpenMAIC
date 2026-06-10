@@ -234,7 +234,7 @@ export const classrooms = pgTable('classrooms', {
   name: text('name').notNull(),
   description: text('description'),
   sceneCount: integer('scene_count').default(0),
-  data: text('data'),
+  dataUrl: text('data_url'),
   createdAt: integer('created_at').$defaultFn(() => Math.floor(Date.now() / 1000)),
   updatedAt: integer('updated_at').$defaultFn(() => Math.floor(Date.now() / 1000)),
 }, (table) => ({

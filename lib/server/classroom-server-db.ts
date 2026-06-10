@@ -1,14 +1,14 @@
 /**
  * Server-side Classroom Storage
  *
- * Uses PostgreSQL database to store classrooms.
- * This allows multiple devices to access the same classrooms
- * when they are connected to the same server.
+ * Uses PostgreSQL database to store classroom metadata
+ * and Vercel Blob to store classroom content data.
  */
 
 import { ensureDb } from '@/lib/db';
 import { classrooms, type Classroom } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
+import { getClassroomData } from './blob-storage';
 
 export interface PersistedClassroom {
   id: string;
@@ -37,7 +37,7 @@ export async function saveClassroomToServer(classroom: {
   name: string;
   description?: string;
   sceneCount: number;
-  data: any;
+  dataUrl: string;
 }): Promise<void> {
   const db = await ensureDb();
   const now = Math.floor(Date.now() / 1000);
@@ -47,7 +47,7 @@ export async function saveClassroomToServer(classroom: {
     name: classroom.name,
     description: classroom.description,
     sceneCount: classroom.sceneCount,
-    data: JSON.stringify(classroom.data),
+    dataUrl: classroom.dataUrl,
     createdAt: now,
     updatedAt: now,
   }).onConflictDoUpdate({
@@ -56,7 +56,7 @@ export async function saveClassroomToServer(classroom: {
       name: classroom.name,
       description: classroom.description,
       sceneCount: classroom.sceneCount,
-      data: JSON.stringify(classroom.data),
+      dataUrl: classroom.dataUrl,
       updatedAt: now,
     },
   });
@@ -72,7 +72,7 @@ export async function updateClassroomOnServer(classroom: {
   name?: string;
   description?: string;
   sceneCount?: number;
-  data?: any;
+  dataUrl?: string;
 }): Promise<void> {
   const db = await ensureDb();
   const now = Math.floor(Date.now() / 1000);
@@ -84,7 +84,7 @@ export async function updateClassroomOnServer(classroom: {
   if (classroom.name !== undefined) updateData.name = classroom.name;
   if (classroom.description !== undefined) updateData.description = classroom.description;
   if (classroom.sceneCount !== undefined) updateData.sceneCount = classroom.sceneCount;
-  if (classroom.data !== undefined) updateData.data = JSON.stringify(classroom.data);
+  if (classroom.dataUrl !== undefined) updateData.dataUrl = classroom.dataUrl;
 
   await db.update(classrooms)
     .set(updateData)
@@ -94,7 +94,7 @@ export async function updateClassroomOnServer(classroom: {
 }
 
 /**
- * Get a classroom from the database
+ * Get a classroom from the database and Blob
  */
 export async function getClassroomFromServer(id: string): Promise<PersistedClassroom | null> {
   const db = await ensureDb();
@@ -108,12 +108,19 @@ export async function getClassroomFromServer(id: string): Promise<PersistedClass
   }
 
   const row = result[0];
+  
+  // 从 Blob 获取完整数据
+  let data = null;
+  if (row.dataUrl) {
+    data = await getClassroomData(id);
+  }
+
   return {
     id: row.id,
     name: row.name,
     description: row.description,
     sceneCount: row.sceneCount || 0,
-    data: row.data ? JSON.parse(row.data) : null,
+    data: data,
     createdAt: row.createdAt || 0,
     updatedAt: row.updatedAt || 0,
   };
