@@ -259,6 +259,19 @@ async function ensurePgTables(client: any) {
           updated_at INTEGER
         )
       `;
+    } else {
+      const columnsResult = await client`SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'classrooms'`;
+      const columns = columnsResult.map((row: any) => row.column_name);
+      
+      if (!columns.includes('data_url')) {
+        console.log('Adding data_url column to classrooms table...');
+        await client`ALTER TABLE classrooms ADD COLUMN data_url TEXT`;
+      }
+      
+      if (columns.includes('data')) {
+        console.log('Removing data column from classrooms table...');
+        await client`ALTER TABLE classrooms DROP COLUMN data`;
+      }
     }
   } catch (error) {
     console.error('Error ensuring PostgreSQL tables:', error);
@@ -449,6 +462,19 @@ async function ensurePgTablesVercel(sql: any) {
           updated_at INTEGER
         )
       `;
+    } else {
+      const columnsResult = await sql`SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'classrooms'`;
+      const columns = columnsResult.rows.map((row: any) => row.column_name);
+      
+      if (!columns.includes('data_url')) {
+        console.log('Adding data_url column to classrooms table on Vercel...');
+        await sql`ALTER TABLE classrooms ADD COLUMN data_url TEXT`;
+      }
+      
+      if (columns.includes('data')) {
+        console.log('Removing data column from classrooms table on Vercel...');
+        await sql`ALTER TABLE classrooms DROP COLUMN data`;
+      }
     }
   } catch (error) {
     console.error('Error ensuring PostgreSQL tables on Vercel:', error);

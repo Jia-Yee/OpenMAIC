@@ -1,4 +1,4 @@
-const BLOB_API_URL = 'https://api.vercel-storage.com/v1/blobs';
+const BLOB_STORE_ID = process.env.BLOB_STORE_ID || 'store_dEn2beTlBFsQ3VGR';
 const BLOB_TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
 
 export async function uploadClassroomData(classroomId: string, data: any): Promise<string> {
@@ -7,19 +7,18 @@ export async function uploadClassroomData(classroomId: string, data: any): Promi
   }
 
   const jsonData = JSON.stringify(data);
-  const response = await fetch(BLOB_API_URL, {
-    method: 'POST',
+  const response = await fetch(`https://blob.vercel-storage.com/${BLOB_STORE_ID}/classrooms/${classroomId}.json`, {
+    method: 'PUT',
     headers: {
       'Authorization': `Bearer ${BLOB_TOKEN}`,
       'Content-Type': 'application/json',
-      'x-vercel-filename': `${classroomId}.json`,
-      'x-vercel-upload-type': 'blob',
     },
     body: jsonData,
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to upload blob: ${response.statusText}`);
+    const errorText = await response.text();
+    throw new Error(`Failed to upload blob: ${response.statusText} - ${errorText}`);
   }
 
   const result = await response.json();
@@ -32,7 +31,7 @@ export async function getClassroomData(classroomId: string): Promise<any | null>
   }
 
   try {
-    const response = await fetch(`${BLOB_API_URL}/${classroomId}.json`, {
+    const response = await fetch(`https://blob.vercel-storage.com/${BLOB_STORE_ID}/classrooms/${classroomId}.json`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${BLOB_TOKEN}`,
@@ -44,7 +43,8 @@ export async function getClassroomData(classroomId: string): Promise<any | null>
     }
 
     return await response.json();
-  } catch {
+  } catch (e) {
+    console.error('Error fetching classroom data:', e);
     return null;
   }
 }
@@ -54,7 +54,7 @@ export async function deleteClassroomData(classroomId: string): Promise<void> {
     return;
   }
 
-  await fetch(`${BLOB_API_URL}/${classroomId}.json`, {
+  await fetch(`https://blob.vercel-storage.com/${BLOB_STORE_ID}/classrooms/${classroomId}.json`, {
     method: 'DELETE',
     headers: {
       'Authorization': `Bearer ${BLOB_TOKEN}`,
@@ -68,7 +68,7 @@ export async function listClassroomFiles(): Promise<string[]> {
   }
 
   try {
-    const response = await fetch(`${BLOB_API_URL}?prefix=classrooms/`, {
+    const response = await fetch(`https://blob.vercel-storage.com/${BLOB_STORE_ID}?prefix=classrooms/`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${BLOB_TOKEN}`,
