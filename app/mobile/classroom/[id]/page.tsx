@@ -35,7 +35,7 @@ export default function MobileClassroomPage() {
   const [scenes, setScenes] = useState<SceneData[]>([]);
   const [loading, setLoading] = useState(true);
   const [showChat, setShowChat] = useState(false);
-  const [ttsEnabled, setTtsEnabled] = useState(true);
+  const [ttsEnabled, setTtsEnabled] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Load classroom data
@@ -256,13 +256,6 @@ export default function MobileClassroomPage() {
         </div>
 
         <div className="flex gap-1">
-          <button
-            onClick={() => setTtsEnabled(!ttsEnabled)}
-            className={`p-2 rounded-full transition ${ttsEnabled ? 'bg-blue-100 text-blue-600' : 'hover:bg-gray-100'}`}
-            title="语音朗读"
-          >
-            <Volume2Icon size={20} />
-          </button>
           <button
             onClick={() => setShowChat(!showChat)}
             className={`p-2 rounded-full transition ${showChat ? 'bg-blue-100 text-blue-600' : 'hover:bg-gray-100'}`}

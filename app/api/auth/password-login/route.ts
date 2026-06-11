@@ -17,6 +17,7 @@ async function ensureDb() {
  * POST /api/auth/password-login
  * Password login with phone and password
  * Supports admin login as any user
+ * Also supports environment variable admin credentials
  */
 export async function POST(request: Request) {
   try {
@@ -28,6 +29,27 @@ export async function POST(request: Request) {
         { error: 'Phone and password are required' },
         { status: 400 }
       );
+    }
+
+    // Check for environment variable admin credentials first
+    const adminUsername = process.env.ADMIN_USERNAME;
+    const adminPassword = process.env.ADMIN_PASSWORD;
+    
+    if (adminUsername && adminPassword && phone === adminUsername && password === adminPassword) {
+      // Admin login via environment variables
+      const token = generateToken({ userId: 'admin', openid: 'admin', isAdmin: true });
+      
+      return NextResponse.json({
+        success: true,
+        token,
+        isAdmin: true,
+        user: {
+          id: 'admin',
+          nickname: '管理员',
+          avatarUrl: null,
+          phone: adminUsername,
+        },
+      });
     }
 
     const db = await ensureDb();
