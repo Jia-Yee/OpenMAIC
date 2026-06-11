@@ -208,16 +208,7 @@ function HomePage() {
     },
   );
 
-  useEffect(() => {
-    // Clear stale media store to prevent cross-course thumbnail contamination.
-    // The store may hold tasks from a previously visited classroom whose elementIds
-    // (gen_img_1, etc.) collide with other courses' placeholders.
-    useMediaGenerationStore.getState().revokeObjectUrls();
-    useMediaGenerationStore.setState({ tasks: {} });
-
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- Store hydration on mount
-    loadClassrooms();
-  }, []);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- Store hydration on mount
 
   const handleDelete = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -744,6 +735,7 @@ function isCustomAvatar(src: string) {
 }
 
 function GreetingBar() {
+  const router = useRouter();
   const { t } = useI18n();
   const avatar = useUserProfileStore((s) => s.avatar);
   const nickname = useUserProfileStore((s) => s.nickname);
@@ -753,6 +745,13 @@ function GreetingBar() {
   const setBio = useUserProfileStore((s) => s.setBio);
   
   const { user, isAdmin, logout } = useAuthStore();
+
+  // Admin permission check - redirect to login if not admin
+  useEffect(() => {
+    if (typeof window !== 'undefined' && !isAdmin) {
+      router.push('/login');
+    }
+  }, [isAdmin, router]);
 
   const [open, setOpen] = useState(false);
   const [editingName, setEditingName] = useState(false);

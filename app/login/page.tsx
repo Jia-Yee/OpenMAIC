@@ -67,8 +67,12 @@ export default function LoginPage() {
       const data = await res.json();
 
       if (res.ok && data.success) {
-        login(data.token, data.user, data.isAdmin || false);
-        router.push('/');
+        if (!data.isAdmin) {
+          setError('请联系管理员获取访问权限');
+          return;
+        }
+        login(data.token, data.user, true);
+        router.push('/admin');
       } else {
         setError(data.error || '登录失败');
       }
