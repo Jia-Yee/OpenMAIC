@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { sanitizeImageUrl, validateSubjectId, validateGradeId, sanitizeSubjectName } from '@/lib/utils/security';
 
 interface Course {
   id: string;
@@ -53,7 +54,7 @@ export default function AdventureContent() {
   const searchParams = useSearchParams();
   const subjectId = searchParams.get('subjectId');
   const gradeId = searchParams.get('gradeId');
-  const subjectName = searchParams.get('subjectName') || '数学冒险';
+  const subjectName = sanitizeSubjectName(searchParams.get('subjectName'));
 
   const [islands, setIslands] = useState<Island[]>([]);
   const [loading, setLoading] = useState(true);
@@ -81,17 +82,28 @@ export default function AdventureContent() {
   const [isDragging, setIsDragging] = useState(false);
   const dragStart = useRef({ x: 0, y: 0 });
   const offsetStart = useRef({ x: 0, y: 0 });
+  
+  // Validation state
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   const MAP_WIDTH = 1200;
   const MAP_HEIGHT = 1600;
 
   useEffect(() => {
     console.log('Adventure useEffect - subjectId:', subjectId, 'gradeId:', gradeId);
-    if (!subjectId) {
-      console.log('No subjectId, redirecting to mobile');
-      router.push('/mobile');
+    
+    if (!validateSubjectId(subjectId)) {
+      setValidationError('无效的科目ID');
+      setLoading(false);
       return;
     }
+    
+    if (gradeId && !validateGradeId(gradeId)) {
+      setValidationError('无效的年级ID');
+      setLoading(false);
+      return;
+    }
+    
     checkAuth();
     loadGradesAndCourses();
     loadSubjects();
@@ -426,6 +438,25 @@ export default function AdventureContent() {
 
   return (
     <div className="h-screen bg-gradient-to-b from-indigo-950 via-purple-900 to-blue-900 overflow-hidden relative">
+      {/* Validation Error State */}
+      {validationError && !loading && (
+        <div className="absolute inset-0 bg-gradient-to-b from-indigo-950 via-purple-900 to-blue-900 flex items-center justify-center z-50">
+          <div className="text-center p-4">
+            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <span className="text-3xl">⚠️</span>
+            </div>
+            <p className="text-red-400 mb-2">{validationError}</p>
+            <p className="text-white/70 text-sm mb-4">请检查链接是否正确</p>
+            <button
+              onClick={() => router.push('/mobile')}
+              className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition"
+            >
+              返回首页
+            </button>
+          </div>
+        </div>
+      )}
+      
       {/* Loading State */}
       {loading && (
         <div className="absolute inset-0 bg-gradient-to-b from-indigo-950 via-purple-900 to-blue-900 flex items-center justify-center z-50">
@@ -473,7 +504,12 @@ export default function AdventureContent() {
               <div className="relative">
                 <button className="p-2 bg-white/10 backdrop-blur-sm rounded-lg hover:bg-white/20 transition flex items-center gap-2">
                   {user.avatarUrl ? (
-                    <img src={user.avatarUrl} alt={user.nickname} className="w-8 h-8 rounded-full object-cover" />
+                    <img 
+                      src={sanitizeImageUrl(user.avatarUrl)} 
+                      alt={user.nickname} 
+                      className="w-8 h-8 rounded-full object-cover"
+                      crossOrigin="anonymous"
+                    />
                   ) : (
                     <div className="w-8 h-8 bg-gradient-to-br from-indigo-400 to-purple-500 rounded-full flex items-center justify-center text-white text-sm font-bold">
                       {user.nickname?.[0] || '?'}

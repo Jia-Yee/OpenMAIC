@@ -41,35 +41,104 @@ async function verifyToken(token: string, accessCode: string): Promise<boolean> 
   return mismatch === 0;
 }
 
+/** Set security headers on response */
+function setSecurityHeaders(response: NextResponse, request: NextRequest): void {
+  const { protocol, hostname } = request.nextUrl;
+  const isHttps = protocol === 'https:';
+  const isProduction = process.env.VERCEL === '1' || process.env.NODE_ENV === 'production';
+  const isDev = process.env.NODE_ENV === 'development';
+  
+  // X-Content-Type-Options
+  response.headers.set('X-Content-Type-Options', 'nosniff');
+  
+  // X-XSS-Protection
+  response.headers.set('X-XSS-Protection', '1; mode=block');
+  
+  // Referrer-Policy
+  response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  
+  // Permissions-Policy
+  response.headers.set('Permissions-Policy', 'geolocation=(self), camera=(self), microphone=(self), fullscreen=(self)');
+  
+  // HSTS only in production and HTTPS
+  if (isProduction && isHttps) {
+    response.headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+  }
+  
+  // X-Frame-Options
+  const extraAncestors = process.env.ALLOWED_FRAME_ANCESTORS?.trim();
+  if (!extraAncestors) {
+    response.headers.set('X-Frame-Options', 'SAMEORIGIN');
+  }
+  
+  // Content-Security-Policy
+  const cspDirectives: string[] = [
+    `default-src 'self'`,
+    `script-src 'self' 'unsafe-inline' 'unsafe-eval'${isProduction && !isDev ? ' https://*.vercel-insights.com https://*.googletagmanager.com' : ''}`,
+    `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com`,
+    `font-src 'self' https://fonts.gstatic.com data:`,
+    `img-src 'self' data: blob: https://*.vercel-storage.com https://*.blob.core.windows.net`,
+    `media-src 'self' data: blob: https://*.vercel-storage.com`,
+    `connect-src 'self'${isProduction && !isDev ? ' https://api.openai.com https://api.minimax.chat' : ''} https://*.vercel-storage.com https://blob.vercel-storage.com ws://localhost:* wss://localhost:*`,
+    `frame-src 'self' https://*.youtube.com https://*.google.com`,
+    `object-src 'none'`,
+    `base-uri 'self'`,
+    `form-action 'self'`,
+  ];
+  
+  // Only add upgrade-insecure-requests in production HTTPS environment
+  if (isProduction && isHttps) {
+    cspDirectives.push('upgrade-insecure-requests');
+  }
+  
+  // Frame ancestors
+  const frameAncestors = extraAncestors ? `'self' ${extraAncestors}` : "'self'";
+  cspDirectives.push(`frame-ancestors ${frameAncestors}`);
+  
+  response.headers.set('Content-Security-Policy', cspDirectives.join('; '));
+}
+
 export async function proxy(request: NextRequest) {
   const accessCode = process.env.ACCESS_CODE;
+  let response: NextResponse;
+
   if (!accessCode) {
-    return NextResponse.next();
+    response = NextResponse.next();
+    setSecurityHeaders(response, request);
+    return response;
   }
 
   const { pathname } = request.nextUrl;
 
   // Whitelist: access-code endpoints, health check, admin API, auth API, user API, mobile API
   if (pathname.startsWith('/api/access-code/') || pathname === '/api/health' || pathname.startsWith('/api/admin/') || pathname.startsWith('/api/auth/') || pathname.startsWith('/api/user/') || pathname.startsWith('/api/classrooms/')) {
-    return NextResponse.next();
+    response = NextResponse.next();
+    setSecurityHeaders(response, request);
+    return response;
   }
 
   // Check cookie — validate HMAC signature, not just existence
   const cookie = request.cookies.get('openmaic_access');
   if (cookie?.value && (await verifyToken(cookie.value, accessCode))) {
-    return NextResponse.next();
+    response = NextResponse.next();
+    setSecurityHeaders(response, request);
+    return response;
   }
 
   // API requests without valid cookie → 401
   if (pathname.startsWith('/api/')) {
-    return NextResponse.json(
+    response = NextResponse.json(
       { success: false, errorCode: 'INVALID_REQUEST', error: 'Access code required' },
       { status: 401 },
     );
+    setSecurityHeaders(response, request);
+    return response;
   }
 
   // Page requests → let through, frontend shows modal
-  return NextResponse.next();
+  response = NextResponse.next();
+  setSecurityHeaders(response, request);
+  return response;
 }
 
 export const config = {

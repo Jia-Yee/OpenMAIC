@@ -1,11 +1,12 @@
 'use client';
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { ChevronLeftIcon, ChevronRightIcon, PlayIcon, PauseIcon, SquareIcon, Volume2Icon, MessageCircleIcon } from 'lucide-react';
 import { useMobilePlayback } from '@/lib/hooks/use-mobile-playback';
 import { CapacitorTTS } from '@/lib/hooks/use-capacitor-tts';
 import type { PPTElement, PPTTextElement, PPTShapeElement, PPTImageElement, PPTLineElement, PPTLatexElement } from '@/lib/types/slides';
+import { validateClassroomId, validateMode, sanitizeImageUrl } from '@/lib/utils/security';
 
 // Types for scene data
 interface SceneData {
@@ -28,7 +29,9 @@ interface ClassroomData {
 export default function MobileClassroomPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const classroomId = params.id as string;
+  const mode = searchParams.get('mode') || 'learning';
 
   const [classroom, setClassroom] = useState<ClassroomData | null>(null);
   const [currentSceneIndex, setCurrentSceneIndex] = useState(0);
@@ -37,11 +40,23 @@ export default function MobileClassroomPage() {
   const [showChat, setShowChat] = useState(false);
   const [ttsEnabled, setTtsEnabled] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
 
-  // Load classroom data
   useEffect(() => {
+    if (!validateClassroomId(classroomId)) {
+      setValidationError('无效的课程ID');
+      setLoading(false);
+      return;
+    }
+    
+    if (!validateMode(mode)) {
+      setValidationError('无效的模式参数');
+      setLoading(false);
+      return;
+    }
+    
     loadClassroom();
-  }, [classroomId]);
+  }, [classroomId, mode]);
 
   const loadClassroom = async () => {
     try {
@@ -121,6 +136,7 @@ export default function MobileClassroomPage() {
     next,
   } = useMobilePlayback({
     actions: currentActions,
+    disableTTS: !ttsEnabled,
     onSpeechStart: (text) => {
       console.log('开始朗读:', text.substring(0, 50) + '...');
     },
@@ -201,6 +217,27 @@ export default function MobileClassroomPage() {
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-gray-600">加载课程中...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Validation error state
+  if (validationError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center p-4">
+          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <span className="text-3xl">⚠️</span>
+          </div>
+          <p className="text-red-600 mb-2">{validationError}</p>
+          <p className="text-gray-500 text-sm mb-4">请检查链接是否正确</p>
+          <button
+            onClick={() => router.push('/mobile')}
+            className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+          >
+            返回课程列表
+          </button>
         </div>
       </div>
     );
@@ -1157,19 +1194,22 @@ function ImageElement({ element, isSpotlighted }: ImageElementProps) {
     transition: 'filter 0.3s ease',
   };
 
+  const safeSrc = sanitizeImageUrl(element.src);
+
   return (
     <div
       style={style}
       className={isSpotlighted ? 'ring-4 ring-yellow-400' : ''}
     >
       <img
-        src={element.src}
+        src={safeSrc}
         alt={element.name || 'image'}
         style={{
           width: '100%',
           height: '100%',
           objectFit: 'contain',
         }}
+        crossOrigin="anonymous"
       />
     </div>
   );

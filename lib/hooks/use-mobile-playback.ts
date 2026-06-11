@@ -22,6 +22,7 @@ export interface UseMobilePlaybackProps {
   onWhiteboard?: (action: any) => void;
   onNextAction?: () => void;
   onEnd?: () => void;
+  disableTTS?: boolean;
 }
 
 export function useMobilePlayback({
@@ -33,6 +34,7 @@ export function useMobilePlayback({
   onWhiteboard,
   onNextAction,
   onEnd,
+  disableTTS = false,
 }: UseMobilePlaybackProps) {
   const [state, setState] = useState<PlaybackState>('idle');
   const [currentActionIndex, setCurrentActionIndex] = useState(-1);
@@ -149,7 +151,7 @@ export function useMobilePlayback({
               advanceToNext();
             }
           });
-        } else {
+        } else if (!disableTTS) {
           // No pre-generated audio, fall back to TTS
           console.log('[MobilePlayback] No pre-generated audio, using TTS');
           
@@ -179,6 +181,17 @@ export function useMobilePlayback({
               advanceToNext();
             }
           }
+        } else {
+          // TTS is disabled and no pre-generated audio, skip directly to next action
+          console.log('[MobilePlayback] TTS disabled and no pre-generated audio, skipping speech');
+          setTimeout(() => {
+            if (isMountedRef.current && !shouldStopRef.current) {
+              setLectureText(null);
+              setIsSpeaking(false);
+              onSpeechEnd?.();
+              advanceToNext();
+            }
+          }, 100);
         }
         break;
       }
