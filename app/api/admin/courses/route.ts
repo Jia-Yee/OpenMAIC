@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, initDb, getSqliteDb } from '@/lib/db';
-import { courses, grades, textbooks, subjects, eq, asc } from '@/lib/db/schema';
+import { courses, grades, textbooks, subjects, eq, asc, inArray } from '@/lib/db/schema';
 import type { NewCourse } from '@/lib/db/schema';
 import { writeFileSync, existsSync } from 'fs';
 import { dirname } from 'path';
@@ -105,7 +105,7 @@ export async function DELETE(request: NextRequest) {
 
     const db = await ensureDb();
 
-    await db.delete(courses).where(courses.id.in(idList));
+    await db.delete(courses).where(inArray(courses.id, idList));
 
     saveDatabase();
 
