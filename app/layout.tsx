@@ -18,9 +18,14 @@ const inter = localFont({
 });
 
 export const metadata: Metadata = {
-  title: '韦达数学',
+  title: '韦达学习',
   description:
     'AI 交互式学习平台 - 上传 PDF 即可生成沉浸式多智能体学习体验。',
+  icons: {
+    icon: '/favicon.svg',
+    shortcut: '/favicon.svg',
+    apple: '/favicon.svg',
+  },
 };
 
 export default function RootLayout({

@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import '../globals.css';
 
 export const metadata: Metadata = {
-  title: '韦达数学 - AI 交互式课堂',
+  title: '韦达学习 - AI 交互式课堂',
   description: 'AI 多智能体交互式学习平台移动端',
   manifest: '/manifest.json',
 };

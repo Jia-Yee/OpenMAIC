@@ -99,16 +99,13 @@ export default function LoginPage() {
       >
         {/* Logo */}
         <div className="text-center mb-8">
-          <motion.img
-            src="/logo-horizontal.png"
-            alt="OpenMAIC"
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.2 }}
-            className="h-16 mx-auto mb-4"
-          />
-          <h1 className="text-2xl font-bold text-gray-800">欢迎回来</h1>
-          <p className="text-gray-500 mt-2">请登录您的账户</p>
+          <div className="flex items-center justify-center gap-3 mb-2">
+            <div className="w-12 h-12 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-xl flex items-center justify-center text-2xl">
+              🎓
+            </div>
+            <h1 className="text-2xl font-bold text-gray-800">韦达学习</h1>
+          </div>
+          <p className="text-gray-500">AI 交互式学习平台</p>
         </div>
 
         {/* Error Message */}

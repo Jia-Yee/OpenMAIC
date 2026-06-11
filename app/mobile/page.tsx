@@ -173,9 +173,12 @@ export default function MobileHome() {
       {/* Header */}
       <header className="bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg sticky top-0 z-10">
         <div className="px-4 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold">韦达数学</h1>
-            <p className="text-xs text-blue-100 mt-1">AI 交互式课堂</p>
+          <div className="flex items-center gap-2">
+            <span className="text-2xl">🎓</span>
+            <div>
+              <h1 className="text-xl font-bold">韦达学习</h1>
+              <p className="text-xs text-blue-100 mt-1">AI 交互式课堂</p>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <button

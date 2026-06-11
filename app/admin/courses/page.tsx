@@ -54,9 +54,11 @@ export default function CoursesPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showBatchDeleteConfirm, setShowBatchDeleteConfirm] = useState(false);
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [selectedClassroom, setSelectedClassroom] = useState<Classroom | null>(null);
   const [activeTab, setActiveTab] = useState<'courses' | 'classrooms'>('courses');
+  const [selectedCourseIds, setSelectedCourseIds] = useState<Set<string>>(new Set());
 
   // 从年级中提取唯一的年级名称（去掉上下册）
   const getGradeDisplayName = (name: string) => {
@@ -413,6 +415,52 @@ export default function CoursesPage() {
     }
   };
 
+  const handleSelectAll = () => {
+    if (selectedCourseIds.size === filteredCourses.length) {
+      setSelectedCourseIds(new Set());
+    } else {
+      setSelectedCourseIds(new Set(filteredCourses.map(c => c.id)));
+    }
+  };
+
+  const handleSelectCourse = (courseId: string) => {
+    const newSelected = new Set(selectedCourseIds);
+    if (newSelected.has(courseId)) {
+      newSelected.delete(courseId);
+    } else {
+      newSelected.add(courseId);
+    }
+    setSelectedCourseIds(newSelected);
+  };
+
+  const handleBatchDeleteClick = () => {
+    setShowBatchDeleteConfirm(true);
+  };
+
+  const handleBatchDelete = async () => {
+    const ids = Array.from(selectedCourseIds);
+    
+    try {
+      const res = await fetch(`/api/admin/courses?ids=${ids.join(',')}`, {
+        method: 'DELETE',
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        alert(`成功删除 ${data.deletedCount} 个课程`);
+        setShowBatchDeleteConfirm(false);
+        setSelectedCourseIds(new Set());
+        fetchCourses();
+      } else {
+        const data = await res.json();
+        alert(data.error || '删除失败');
+      }
+    } catch (error) {
+      console.error('Error deleting courses:', error);
+      alert('删除失败');
+    }
+  };
+
   const handleToggleFree = async (course: Course) => {
     try {
       const res = await fetch(`/api/admin/courses/${course.id}`, {
@@ -594,9 +642,32 @@ export default function CoursesPage() {
 
           {/* Course Table */}
           <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+            {/* Batch Actions Bar */}
+            {selectedCourseIds.size > 0 && (
+              <div className="px-6 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+                <span className="text-sm text-gray-600">
+                  已选择 <strong>{selectedCourseIds.size}</strong> 个课程
+                </span>
+                <button
+                  onClick={handleBatchDeleteClick}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-sm font-medium"
+                >
+                  批量删除
+                </button>
+              </div>
+            )}
+            
             <table className="w-full">
               <thead className="bg-gray-50">
                 <tr>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600 w-12">
+                    <input
+                      type="checkbox"
+                      checked={filteredCourses.length > 0 && selectedCourseIds.size === filteredCourses.length}
+                      onChange={handleSelectAll}
+                      className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                  </th>
                   <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">课程信息</th>
                   <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">年级/科目</th>
                   <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">上下册</th>
@@ -608,20 +679,28 @@ export default function CoursesPage() {
               <tbody className="divide-y divide-gray-100">
                 {loading ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
+                    <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto mb-3"></div>
                       加载中...
                     </td>
                   </tr>
                 ) : filteredCourses.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
+                    <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
                       暂无课程
                     </td>
                   </tr>
                 ) : (
                   filteredCourses.map((course) => (
-                    <tr key={course.id} className="hover:bg-gray-50 transition">
+                    <tr key={course.id} className={`hover:bg-gray-50 transition ${selectedCourseIds.has(course.id) ? 'bg-blue-50' : ''}`}>
+                      <td className="px-6 py-4">
+                        <input
+                          type="checkbox"
+                          checked={selectedCourseIds.has(course.id)}
+                          onChange={() => handleSelectCourse(course.id)}
+                          className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                        />
+                      </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
                           {course.coverUrl ? (
@@ -1060,6 +1139,35 @@ export default function CoursesPage() {
                   className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
                 >
                   删除
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Batch Delete Confirm Modal */}
+      {showBatchDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl w-full max-w-sm">
+            <div className="p-6 text-center">
+              <div className="text-5xl mb-4">⚠️</div>
+              <h3 className="text-lg font-semibold text-gray-800 mb-2">批量删除确认</h3>
+              <p className="text-gray-600 mb-6">
+                确定要删除选中的 <strong>{selectedCourseIds.size}</strong> 个课程吗？此操作无法撤销。
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowBatchDeleteConfirm(false)}
+                  className="flex-1 px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleBatchDelete}
+                  className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
+                >
+                  确认删除
                 </button>
               </div>
             </div>

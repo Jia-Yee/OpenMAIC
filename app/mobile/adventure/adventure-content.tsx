@@ -822,13 +822,13 @@ export default function AdventureContent() {
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl">
             <div className="text-center mb-6">
-              <div className="w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                </svg>
+              <div className="flex items-center justify-center gap-3 mb-2">
+                <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center text-2xl">
+                  🎓
+                </div>
+                <h1 className="text-2xl font-bold text-gray-800">韦达学习</h1>
               </div>
-              <h2 className="text-xl font-bold text-gray-800">用户登录</h2>
-              <p className="text-gray-500 text-sm mt-1">请输入账号密码登录</p>
+              <p className="text-gray-500 text-sm">AI 交互式学习平台</p>
             </div>
             
             {loginError && (

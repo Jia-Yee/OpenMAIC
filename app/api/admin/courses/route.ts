@@ -79,6 +79,51 @@ export async function GET(request: NextRequest) {
 }
 
 /**
+ * DELETE /api/admin/courses
+ * Delete multiple courses
+ */
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const ids = searchParams.get('ids');
+    
+    if (!ids) {
+      return NextResponse.json(
+        { error: 'ids parameter is required' },
+        { status: 400 }
+      );
+    }
+
+    const idList = ids.split(',').filter(Boolean);
+    
+    if (idList.length === 0) {
+      return NextResponse.json(
+        { error: 'No course IDs provided' },
+        { status: 400 }
+      );
+    }
+
+    const db = await ensureDb();
+
+    await db.delete(courses).where(courses.id.in(idList));
+
+    saveDatabase();
+
+    return NextResponse.json({
+      success: true,
+      message: `Successfully deleted ${idList.length} courses`,
+      deletedCount: idList.length,
+    });
+  } catch (error) {
+    console.error('Error deleting courses:', error);
+    return NextResponse.json(
+      { error: 'Failed to delete courses' },
+      { status: 500 }
+    );
+  }
+}
+
+/**
  * POST /api/admin/courses
  * Create a new course
  */
