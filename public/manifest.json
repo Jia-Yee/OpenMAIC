@@ -1,7 +1,7 @@
 {
-  "name": "OpenMAIC Player - AI 交互式课堂",
-  "short_name": "OpenMAIC",
-  "description": "AI 多智能体交互式学习平台移动端应用",
+  "name": "韦达数学 - AI 交互式课堂",
+  "short_name": "韦达数学",
+  "description": "AI 多智能体交互式学习平台",
   "start_url": "/mobile",
   "display": "standalone",
   "background_color": "#ffffff",
