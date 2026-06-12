@@ -7,6 +7,8 @@ import {
   persistClassroom,
   readClassroom,
 } from '@/lib/server/classroom-storage';
+import { getClassroomData, listClassroomMedia, getMediaFile } from '@/lib/server/blob-storage';
+import { restoreMediaDataUrls } from '@/lib/server/media-extractor';
 import { createLogger } from '@/lib/logger';
 
 const log = createLogger('Classroom API');
@@ -64,7 +66,45 @@ export async function GET(request: NextRequest) {
       return apiError(API_ERROR_CODES.INVALID_REQUEST, 400, 'Invalid classroom id');
     }
 
-    const classroom = await readClassroom(id);
+    let classroom = await readClassroom(id);
+
+    // 如果本地文件系统没有，尝试从 Blob 读取
+    if (!classroom) {
+      log.info(`Classroom not found in local storage, trying Blob: ${id}`);
+      
+      const data = await getClassroomData(id);
+      if (data) {
+        // 下载媒体文件并还原为 data URL
+        const mediaData: Record<string, string> = {};
+        const mediaFiles = await listClassroomMedia(id);
+        
+        for (const mediaFile of mediaFiles) {
+          if (!mediaFile) continue;
+          const mediaId = mediaFile.replace(/\.[^.]+$/, '');
+          const dataUrl = await getMediaFile(id, mediaFile);
+          if (dataUrl) {
+            mediaData[mediaId] = dataUrl;
+          }
+        }
+        
+        // 还原媒体文件为 data URL
+        if (Object.keys(mediaData).length > 0 && data.stage && data.scenes) {
+          const restoredData = restoreMediaDataUrls(data, mediaData);
+          data.stage = restoredData.stage;
+          data.scenes = restoredData.scenes;
+        }
+        
+        classroom = {
+          id,
+          stage: data.stage,
+          scenes: data.scenes || [],
+          createdAt: new Date().toISOString(),
+        };
+        
+        log.info(`Classroom loaded from Blob: ${id}`);
+      }
+    }
+
     if (!classroom) {
       return apiError(API_ERROR_CODES.INVALID_REQUEST, 404, 'Classroom not found');
     }
