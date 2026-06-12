@@ -125,10 +125,12 @@ export function useMobilePlayback({
         // Try to play pre-generated audio first
         let audioStarted = false;
         try {
+          console.log('[MobilePlayback] Audio action - audioId:', speechAction.audioId, ', audioUrl:', speechAction.audioUrl ? (speechAction.audioUrl.startsWith('data:') ? 'data URL' : speechAction.audioUrl.substring(0, 50)) : 'undefined');
           audioStarted = await audioPlayerRef.current?.play(
             speechAction.audioId || '', 
             speechAction.audioUrl
           ) ?? false;
+          console.log('[MobilePlayback] Audio started:', audioStarted);
         } catch (error: any) {
           // Handle expected interrupt errors gracefully
           if (error?.message?.includes('interrupted')) {

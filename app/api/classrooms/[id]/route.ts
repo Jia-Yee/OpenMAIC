@@ -80,6 +80,19 @@ export async function GET(
       // 从 Blob 获取完整数据
       const data = (serverClassroom.dataUrl ? await getClassroomData(classroomId) : null) || {} as any;
       
+      // Debug: 检查原始数据中的音频 URL 格式
+      if (data.scenes) {
+        for (const scene of data.scenes) {
+          if (scene.actions) {
+            for (const action of scene.actions) {
+              if (action.type === 'speech') {
+                console.log(`[Debug] Speech action audioUrl format: ${action.audioUrl ? (action.audioUrl.startsWith('data:') ? 'data URL' : action.audioUrl.substring(0, 50)) : 'undefined'}, audioId: ${action.audioId || action.id}`);
+              }
+            }
+          }
+        }
+      }
+      
       // 下载媒体文件并还原为data URL
       const mediaData: Record<string, string> = {};
       if (serverClassroom.dataUrl) {
