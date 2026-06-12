@@ -45,39 +45,9 @@ export default function MobileHome() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check login status
-    const token = localStorage.getItem('token');
-    const userStr = localStorage.getItem('user');
-    
-    // Development mode: allow without login
-    const isDev = process.env.NODE_ENV === 'development';
-    
-    // If logged in, redirect directly to adventure page
-    if ((token || isDev) && !window.location.pathname.includes('login')) {
-      router.push('/mobile/adventure?subjectId=subject-math&subjectName=数学&gradeId=grade-rjb-1a');
-      return;
-    }
-    
-    if (!token && !isDev) {
-      router.push('/mobile/login');
-      return;
-    }
-    
-    if (userStr) {
-      try {
-        setUser(JSON.parse(userStr));
-      } catch (e) {
-        console.error('Parse user error:', e);
-        // Dev fallback
-        if (isDev) {
-          setUser({ id: 'dev-user', nickname: '测试用户' });
-        }
-      }
-    } else if (isDev) {
-      setUser({ id: 'dev-user', nickname: '测试用户' });
-    }
-    
-    loadData();
+    // Always redirect directly to adventure page for mobile users
+    // Login is only required when user performs specific actions
+    router.push('/mobile/adventure?subjectId=subject-math&subjectName=数学&gradeId=grade-rjb-1a');
   }, [router]);
 
   const loadData = async () => {

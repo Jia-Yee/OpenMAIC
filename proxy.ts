@@ -110,8 +110,8 @@ export async function proxy(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
 
-  // Whitelist: access-code endpoints, health check, admin API, auth API, user API, mobile API
-  if (pathname.startsWith('/api/access-code/') || pathname === '/api/health' || pathname.startsWith('/api/admin/') || pathname.startsWith('/api/auth/') || pathname.startsWith('/api/user/') || pathname.startsWith('/api/classrooms/')) {
+  // Whitelist: access-code endpoints, health check, admin API, auth API, user API, mobile API, mobile pages
+  if (pathname.startsWith('/api/access-code/') || pathname === '/api/health' || pathname.startsWith('/api/admin/') || pathname.startsWith('/api/auth/') || pathname.startsWith('/api/user/') || pathname.startsWith('/api/classrooms/') || pathname.startsWith('/api/courses') || pathname.startsWith('/api/grades') || pathname.startsWith('/api/subjects') || pathname.startsWith('/api/textbooks') || pathname.startsWith('/mobile/adventure') || pathname.startsWith('/mobile/courses') || pathname.startsWith('/mobile/grades')) {
     response = NextResponse.next();
     setSecurityHeaders(response, request);
     return response;
