@@ -1,6 +1,10 @@
 const TRUSTED_IMAGE_ORIGINS = [
   /^https?:\/\/.*\.vercel-storage\.com/,
   /^https?:\/\/.*\.blob\.core\.windows\.net/,
+  /^https?:\/\/.*\.vercel\.app\//,
+  /^https?:\/\/open\.maic\.chat\//,
+  /^https?:\/\/www\.viete\.xyz\//,
+  /^https?:\/\/viete\.xyz\//,
   /^https?:\/\/localhost(:\d+)?\//,
   /^https?:\/\/127\.0\.0\.1(:\d+)?\//,
   /^https?:\/\/0\.0\.0\.0(:\d+)?\//,
@@ -10,9 +14,17 @@ const TRUSTED_IMAGE_ORIGINS = [
   /^blob:/,
 ];
 
+// 媒体 ID 格式：gen_img_xxx, gen_vid_xxx 等
+const MEDIA_ID_PATTERN = /^(gen_img|gen_vid|gen_audio|media)_[a-zA-Z0-9_-]+$/;
+
 export function isTrustedImageUrl(url: string): boolean {
   if (!url || typeof url !== 'string') {
     return false;
+  }
+  
+  // 媒体 ID 是有效的（需要后续转换为完整 URL）
+  if (MEDIA_ID_PATTERN.test(url)) {
+    return true;
   }
   
   try {
@@ -26,13 +38,19 @@ export function isTrustedImageUrl(url: string): boolean {
     
     return false;
   } catch {
-    return url.startsWith('data:') || url.startsWith('blob:');
+    // 相对路径或无效 URL
+    return url.startsWith('data:') || url.startsWith('blob:') || MEDIA_ID_PATTERN.test(url);
   }
 }
 
 export function sanitizeImageUrl(url: string, fallbackUrl: string = '/api/placeholder-image'): string {
   if (!url || typeof url !== 'string') {
     return fallbackUrl;
+  }
+  
+  // 媒体 ID 需要转换为完整 URL（由调用方处理）
+  if (MEDIA_ID_PATTERN.test(url)) {
+    return url; // 返回原始 ID，让调用方处理
   }
   
   if (isTrustedImageUrl(url)) {

@@ -87,12 +87,34 @@ export async function getClassroomData(classroomId: string): Promise<any | null>
   return null;
 }
 
-export async function uploadMediaFile(classroomId: string, mediaId: string, dataUrl: string): Promise<string> {
+export async function uploadMediaFile(classroomId: string, mediaId: string, dataUrlOrBlobUrl: string): Promise<string> {
   const blobModule = await getBlobModule();
   const token = process.env.BLOB_READ_WRITE_TOKEN;
   
   if (blobModule && token) {
-    const blob = dataUrlToBlob(dataUrl);
+    let blob: Blob;
+    
+    // Check if it's a data URL or a Blob URL
+    if (dataUrlOrBlobUrl.startsWith('data:')) {
+      blob = dataUrlToBlob(dataUrlOrBlobUrl);
+    } else if (dataUrlOrBlobUrl.includes('.blob.vercel-storage.com') || dataUrlOrBlobUrl.includes('.vercel-storage.com')) {
+      // It's a Vercel Blob URL, need to download first
+      console.log(`Downloading existing Blob media: ${mediaId}`);
+      const response = await fetch(dataUrlOrBlobUrl, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to download existing Blob media: ${response.status}`);
+      }
+      
+      blob = await response.blob();
+    } else {
+      throw new Error(`Unsupported media URL format: ${dataUrlOrBlobUrl.substring(0, 50)}...`);
+    }
+    
     const path = `classrooms/${classroomId}/media/${mediaId}`;
     const { url } = await blobModule.put(path, blob, {
       access: 'private',

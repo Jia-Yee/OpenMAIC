@@ -8,6 +8,12 @@ export interface MediaFile {
   filename: string;
 }
 
+// Check if URL is a Vercel Blob URL
+function isBlobUrl(url: string): boolean {
+  if (!url || typeof url !== 'string') return false;
+  return url.includes('.blob.vercel-storage.com') || url.includes('.vercel-storage.com');
+}
+
 export function extractMediaFromClassroom(data: {
   stage: Stage;
   scenes: Scene[];
@@ -18,8 +24,8 @@ export function extractMediaFromClassroom(data: {
     for (const element of elements) {
       if (element.type === 'image') {
         const imgElement = element as PPTImageElement;
-        if (imgElement.src && imgElement.src.startsWith('data:')) {
-          const ext = getExtensionFromDataUrl(imgElement.src);
+        if (imgElement.src && (imgElement.src.startsWith('data:') || isBlobUrl(imgElement.src))) {
+          const ext = getExtensionFromDataUrl(imgElement.src) || 'png';
           mediaFiles.push({
             id: element.id,
             src: imgElement.src,
@@ -29,8 +35,8 @@ export function extractMediaFromClassroom(data: {
         }
       } else if (element.type === 'video') {
         const videoElement = element as PPTVideoElement;
-        if (videoElement.src && videoElement.src.startsWith('data:')) {
-          const ext = videoElement.ext || getExtensionFromDataUrl(videoElement.src);
+        if (videoElement.src && (videoElement.src.startsWith('data:') || isBlobUrl(videoElement.src))) {
+          const ext = videoElement.ext || getExtensionFromDataUrl(videoElement.src) || 'mp4';
           mediaFiles.push({
             id: element.id,
             src: videoElement.src,
@@ -40,8 +46,8 @@ export function extractMediaFromClassroom(data: {
         }
       } else if (element.type === 'audio') {
         const audioElement = element as PPTAudioElement;
-        if (audioElement.src && audioElement.src.startsWith('data:')) {
-          const ext = audioElement.ext || getExtensionFromDataUrl(audioElement.src);
+        if (audioElement.src && (audioElement.src.startsWith('data:') || isBlobUrl(audioElement.src))) {
+          const ext = audioElement.ext || getExtensionFromDataUrl(audioElement.src) || 'mp3';
           mediaFiles.push({
             id: element.id,
             src: audioElement.src,
@@ -55,10 +61,10 @@ export function extractMediaFromClassroom(data: {
 
   const extractFromActions = (actions: any[]) => {
     for (const action of actions) {
-      if (action.type === 'speech' && action.audioUrl && action.audioUrl.startsWith('data:')) {
+      if (action.type === 'speech' && action.audioUrl && (action.audioUrl.startsWith('data:') || isBlobUrl(action.audioUrl))) {
         const audioId = action.audioId || action.id;
         if (audioId) {
-          const ext = getExtensionFromDataUrl(action.audioUrl);
+          const ext = getExtensionFromDataUrl(action.audioUrl) || 'mp3';
           mediaFiles.push({
             id: audioId,
             src: action.audioUrl,
@@ -116,7 +122,7 @@ export function replaceMediaUrlsInClassroom(
     return elements.map((element) => {
       if (element.type === 'image') {
         const imgElement = element as PPTImageElement;
-        if (imgElement.src && imgElement.src.startsWith('data:')) {
+        if (imgElement.src && (imgElement.src.startsWith('data:') || isBlobUrl(imgElement.src))) {
           const newSrc = mediaMap[element.id];
           if (newSrc) {
             return { ...imgElement, src: newSrc };
@@ -124,7 +130,7 @@ export function replaceMediaUrlsInClassroom(
         }
       } else if (element.type === 'video') {
         const videoElement = element as PPTVideoElement;
-        if (videoElement.src && videoElement.src.startsWith('data:')) {
+        if (videoElement.src && (videoElement.src.startsWith('data:') || isBlobUrl(videoElement.src))) {
           const newSrc = mediaMap[element.id];
           if (newSrc) {
             return { ...videoElement, src: newSrc };
@@ -132,7 +138,7 @@ export function replaceMediaUrlsInClassroom(
         }
       } else if (element.type === 'audio') {
         const audioElement = element as PPTAudioElement;
-        if (audioElement.src && audioElement.src.startsWith('data:')) {
+        if (audioElement.src && (audioElement.src.startsWith('data:') || isBlobUrl(audioElement.src))) {
           const newSrc = mediaMap[element.id];
           if (newSrc) {
             return { ...audioElement, src: newSrc };
@@ -145,7 +151,7 @@ export function replaceMediaUrlsInClassroom(
 
   const replaceInActions = (actions: any[]): any[] => {
     return actions.map((action) => {
-      if (action.type === 'speech' && action.audioUrl && action.audioUrl.startsWith('data:')) {
+      if (action.type === 'speech' && action.audioUrl && (action.audioUrl.startsWith('data:') || isBlobUrl(action.audioUrl))) {
         const audioId = action.audioId || action.id;
         const newSrc = mediaMap[audioId];
         if (newSrc) {
@@ -212,10 +218,13 @@ export function restoreMediaDataUrls(
 
   const restoreActionAudio = (actions: any[]): any[] => {
     return actions.map((action) => {
-      if (action.type === 'speech' && action.audioId) {
-        const audioSrc = mediaData[action.audioId];
-        if (audioSrc) {
-          return { ...action, audioUrl: audioSrc };
+      if (action.type === 'speech') {
+        const audioId = action.audioId || action.id;
+        if (audioId) {
+          const audioSrc = mediaData[audioId];
+          if (audioSrc) {
+            return { ...action, audioUrl: audioSrc };
+          }
         }
       }
       return action;
