@@ -53,6 +53,23 @@ export function extractMediaFromClassroom(data: {
     }
   };
 
+  const extractFromActions = (actions: any[]) => {
+    for (const action of actions) {
+      if (action.type === 'speech' && action.audioUrl && action.audioUrl.startsWith('data:')) {
+        const audioId = action.audioId || action.id;
+        if (audioId) {
+          const ext = getExtensionFromDataUrl(action.audioUrl);
+          mediaFiles.push({
+            id: audioId,
+            src: action.audioUrl,
+            type: 'audio',
+            filename: `${audioId}.${ext}`,
+          });
+        }
+      }
+    }
+  };
+
   for (const scene of data.scenes) {
     if (scene.content.type === 'slide' && scene.content.canvas) {
       extractFromElements(scene.content.canvas.elements || []);
@@ -61,6 +78,9 @@ export function extractMediaFromClassroom(data: {
       for (const wb of scene.whiteboards) {
         extractFromElements(wb.elements || []);
       }
+    }
+    if (scene.actions) {
+      extractFromActions(scene.actions);
     }
   }
 
@@ -123,6 +143,19 @@ export function replaceMediaUrlsInClassroom(
     });
   };
 
+  const replaceInActions = (actions: any[]): any[] => {
+    return actions.map((action) => {
+      if (action.type === 'speech' && action.audioUrl && action.audioUrl.startsWith('data:')) {
+        const audioId = action.audioId || action.id;
+        const newSrc = mediaMap[audioId];
+        if (newSrc) {
+          return { ...action, audioUrl: newSrc };
+        }
+      }
+      return action;
+    });
+  };
+
   const newScenes = data.scenes.map((scene) => {
     let newScene = { ...scene };
     
@@ -141,6 +174,10 @@ export function replaceMediaUrlsInClassroom(
         ...wb,
         elements: replaceInElements(wb.elements || []),
       }));
+    }
+    
+    if (scene.actions) {
+      newScene.actions = replaceInActions(scene.actions);
     }
     
     return newScene;
@@ -173,6 +210,18 @@ export function restoreMediaDataUrls(
     });
   };
 
+  const restoreActionAudio = (actions: any[]): any[] => {
+    return actions.map((action) => {
+      if (action.type === 'speech' && action.audioId) {
+        const audioSrc = mediaData[action.audioId];
+        if (audioSrc) {
+          return { ...action, audioUrl: audioSrc };
+        }
+      }
+      return action;
+    });
+  };
+
   const newScenes = data.scenes.map((scene) => {
     let newScene = { ...scene };
     
@@ -191,6 +240,10 @@ export function restoreMediaDataUrls(
         ...wb,
         elements: replaceInElements(wb.elements || []),
       }));
+    }
+    
+    if (scene.actions) {
+      newScene.actions = restoreActionAudio(scene.actions);
     }
     
     return newScene;

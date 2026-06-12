@@ -37,8 +37,20 @@ export async function POST(request: Request) {
       if (!classroom.id) continue;
 
       try {
-        // 只同步元数据，不包含完整的 data 字段
-        // data 字段将在首次访问时从 IndexedDB 补充
+        // Check if classroom already exists
+        const existingClassroom = await db.select()
+          .from(classrooms)
+          .where(eq(classrooms.id, classroom.id))
+          .limit(1);
+
+        if (existingClassroom.length > 0) {
+          // Skip if already synced
+          skippedCount++;
+          continue;
+        }
+
+        // Only sync metadata, not the full data field
+        // Data field will be populated from IndexedDB on first access
         await db.insert(classrooms).values({
           id: classroom.id,
           name: classroom.name || 'Untitled',
@@ -46,31 +58,15 @@ export async function POST(request: Request) {
           sceneCount: classroom.sceneCount || 0,
           createdAt: now,
           updatedAt: now,
-        }).onConflictDoUpdate({
-          target: classrooms.id,
-          set: {
-            name: classroom.name || 'Untitled',
-            description: classroom.description,
-            sceneCount: classroom.sceneCount || 0,
-            updatedAt: now,
-          },
         });
 
-        // 确保课程记录存在
+        // Ensure course record exists
         const existingCourse = await db.select()
           .from(courses)
           .where(eq(courses.id, classroom.id))
           .limit(1);
 
-        if (existingCourse.length > 0) {
-          await db.update(courses)
-            .set({
-              title: classroom.name || 'Untitled',
-              description: classroom.description || '',
-              classroomId: classroom.id,
-            })
-            .where(eq(courses.id, classroom.id));
-        } else {
+        if (existingCourse.length === 0) {
           let defaultGradeId = '';
           try {
             const mathSubject = await db.select()

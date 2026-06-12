@@ -87,6 +87,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     if (body.isActive !== undefined) updates.isActive = body.isActive ? 1 : 0;
     if (body.isFree !== undefined) updates.isFree = body.isFree ? 1 : 0;
     if (body.sortOrder !== undefined) updates.sortOrder = body.sortOrder;
+    if (body.semester !== undefined) updates.semester = body.semester;
 
     await db.update(courses)
       .set(updates)

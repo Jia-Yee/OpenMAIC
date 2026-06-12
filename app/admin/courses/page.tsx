@@ -185,7 +185,16 @@ export default function CoursesPage() {
     }
 
     if (filterSemester) {
-      filtered = filtered.filter(course => course.semester === filterSemester);
+      filtered = filtered.filter(course => {
+        const gradeName = course.gradeName || '';
+        const semester = course.semester || '';
+        if (filterSemester === 'first') {
+          return semester === 'first' || gradeName.includes('上册');
+        } else if (filterSemester === 'second') {
+          return semester === 'second' || gradeName.includes('下册');
+        }
+        return true;
+      });
     }
 
     setFilteredCourses(filtered);
@@ -493,8 +502,7 @@ export default function CoursesPage() {
     switch (semester) {
       case 'first': return '上册';
       case 'second': return '下册';
-      case 'full': return '全册';
-      default: return semester || '-';
+      default: return '';
     }
   };
 
@@ -618,7 +626,6 @@ export default function CoursesPage() {
                   <option value="">全部</option>
                   <option value="first">上册</option>
                   <option value="second">下册</option>
-                  <option value="full">全册</option>
                 </select>
               </div>
               <div className="flex items-center gap-2">

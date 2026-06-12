@@ -1,6 +1,11 @@
 const TRUSTED_IMAGE_ORIGINS = [
   /^https?:\/\/.*\.vercel-storage\.com/,
   /^https?:\/\/.*\.blob\.core\.windows\.net/,
+  /^https?:\/\/localhost(:\d+)?\//,
+  /^https?:\/\/127\.0\.0\.1(:\d+)?\//,
+  /^https?:\/\/0\.0\.0\.0(:\d+)?\//,
+  /^https?:\/\/192\.168\.\d+\.\d+(:\d+)?\//,
+  /^https?:\/\/10\.\d+\.\d+\.\d+(:\d+)?\//,
   /^data:/,
   /^blob:/,
 ];
