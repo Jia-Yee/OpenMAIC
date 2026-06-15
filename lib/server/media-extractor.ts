@@ -66,9 +66,9 @@ export function extractMediaFromClassroom(data: {
     for (const action of actions) {
       if (action.type === 'speech') {
         const audioId = action.audioId || action.id;
-        if (audioId) {
-          // 如果有 audioUrl，提取它
-          if (action.audioUrl && (action.audioUrl.startsWith('data:') || isBlobUrl(action.audioUrl))) {
+        if (audioId && action.audioUrl) {
+          // 提取所有类型的音频 URL：data URL、Blob URL、外部 HTTP/HTTPS URL
+          if (action.audioUrl.startsWith('data:')) {
             const ext = getExtensionFromDataUrl(action.audioUrl) || 'mp3';
             mediaFiles.push({
               id: audioId,
@@ -76,14 +76,19 @@ export function extractMediaFromClassroom(data: {
               type: 'audio',
               filename: `${audioId}.${ext}`,
             });
-          } else if (action.audioUrl) {
-            // audioUrl 存在但不是 data: 或 Blob URL，记录警告
-            console.warn(`[MediaExtractor] Unsupported audio URL format for action ${audioId}: ${action.audioUrl.substring(0, 50)}...`);
+          } else if (action.audioUrl.startsWith('http://') || action.audioUrl.startsWith('https://')) {
+            // 所有外部 HTTP/HTTPS URL 都应该被提取和上传
+            const ext = getExtensionFromDataUrl(action.audioUrl) || 'mp3';
+            mediaFiles.push({
+              id: audioId,
+              src: action.audioUrl,
+              type: 'audio',
+              filename: `${audioId}.${ext}`,
+            });
+            console.log(`[MediaExtractor] Extracting external audio URL for action ${audioId}: ${action.audioUrl.substring(0, 50)}...`);
           }
-          // 如果没有 audioUrl，但有 audioId，也记录下来（可能需要从其他地方获取）
-          else {
-            console.warn(`[MediaExtractor] Speech action has audioId but no audioUrl: ${audioId}`);
-          }
+        } else if (audioId && !action.audioUrl) {
+          console.warn(`[MediaExtractor] Speech action has audioId but no audioUrl: ${audioId}`);
         }
       }
     }
@@ -113,6 +118,13 @@ export function extractMediaFromClassroom(data: {
 }
 
 function getExtensionFromDataUrl(dataUrl: string): string {
+  // 先尝试从 URL 路径提取扩展名
+  const urlMatch = dataUrl.match(/\.(\w+)(?:\?|#|$)/);
+  if (urlMatch) {
+    return urlMatch[1].toLowerCase();
+  }
+  
+  // 尝试从 data URL 提取扩展名
   const match = dataUrl.match(/^data:([^;]+);/);
   if (match) {
     const mimeType = match[1].toLowerCase();
@@ -164,11 +176,16 @@ export function replaceMediaUrlsInClassroom(
 
   const replaceInActions = (actions: any[]): any[] => {
     return actions.map((action) => {
-      if (action.type === 'speech' && action.audioUrl && (action.audioUrl.startsWith('data:') || isBlobUrl(action.audioUrl))) {
-        const audioId = action.audioId || action.id;
-        const newSrc = mediaMap[audioId];
-        if (newSrc) {
-          return { ...action, audioUrl: newSrc };
+      if (action.type === 'speech' && action.audioUrl) {
+        // 替换所有类型的音频 URL：data URL、Blob URL、外部 HTTP/HTTPS URL
+        if (action.audioUrl.startsWith('data:') || 
+            action.audioUrl.startsWith('http://') || 
+            action.audioUrl.startsWith('https://')) {
+          const audioId = action.audioId || action.id;
+          const newSrc = mediaMap[audioId];
+          if (newSrc) {
+            return { ...action, audioUrl: newSrc };
+          }
         }
       }
       return action;

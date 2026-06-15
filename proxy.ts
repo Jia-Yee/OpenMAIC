@@ -74,9 +74,9 @@ function setSecurityHeaders(response: NextResponse, request: NextRequest): void 
   // Content-Security-Policy
   const cspDirectives: string[] = [
     `default-src 'self'`,
-    `script-src 'self' 'unsafe-inline' 'unsafe-eval'${isProduction && !isDev ? ' https://*.vercel-insights.com https://*.googletagmanager.com' : ''}`,
-    `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com`,
-    `font-src 'self' https://fonts.gstatic.com data:`,
+    `script-src 'self' 'unsafe-inline' 'unsafe-eval'${isProduction && !isDev ? ' https://*.vercel-insights.com https://*.googletagmanager.com' : ''} https://cdn.jsdelivr.net`,
+    `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com https://cdn.jsdelivr.net`,
+    `font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net data:`,
     `img-src 'self' data: blob: https://*.vercel-storage.com https://*.blob.core.windows.net http://open.maic.chat https://open.maic.chat http://www.viete.xyz https://www.viete.xyz http://viete.xyz https://viete.xyz`,
     `media-src 'self' data: blob: https://*.vercel-storage.com http://open.maic.chat https://open.maic.chat http://www.viete.xyz https://www.viete.xyz http://viete.xyz https://viete.xyz`,
     `connect-src 'self'${isProduction && !isDev ? ' https://api.openai.com https://api.minimax.chat' : ''} https://*.vercel-storage.com https://blob.vercel-storage.com ws://localhost:* wss://localhost:*`,

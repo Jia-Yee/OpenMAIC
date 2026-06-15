@@ -42,7 +42,8 @@ export class AudioPlayer {
       if (audioUrl) {
         log.debug(`Playing audio from URL: ${audioUrl ? (audioUrl.startsWith('data:') ? 'data URL (' + audioUrl.length + ' chars)' : audioUrl) : 'empty'}`);
         
-        if (!audioUrl.startsWith('data:') && !audioUrl.startsWith('http')) {
+        // 允许 data URL、HTTP/HTTPS URL 和相对路径
+        if (!audioUrl.startsWith('data:') && !audioUrl.startsWith('http') && !audioUrl.startsWith('/')) {
           log.warn(`Invalid audio URL format: ${audioUrl.substring(0, 100)}...`);
         }
         

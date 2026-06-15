@@ -30,107 +30,119 @@ export async function GET(
     
     console.log('Fetching classroom:', classroomId);
     
-    // 先尝试从 IndexedDB 获取（客户端缓存）
     let stage = null;
     let scenes = [];
     
-    try {
-      await ensureDbInit();
-      stage = await db.stages.get(classroomId);
-      
-      if (stage) {
-        const sceneRecords = await db.scenes.where('stageId').equals(classroomId).sortBy('order');
-        scenes = sceneRecords.map((record: SceneRecord) => ({
-          id: record.id,
-          type: record.type,
-          order: record.order,
-          title: record.title,
-          content: record.content,
-          actions: record.actions || [],
-          whiteboard: record.whiteboard || [],
-        }));
-        console.log(`Found ${scenes.length} scenes from IndexedDB`);
-      }
-    } catch (indexedDbError) {
-      console.warn('Failed to get classroom from IndexedDB, falling back to server:', indexedDbError);
+    // 直接从服务器获取数据，确保音频 URL 被正确处理
+    console.log('Fetching classroom from server:', classroomId);
+    
+    const pgDb = await ensureDb();
+    
+    // 从 PostgreSQL 获取元数据
+    const results = await pgDb.select()
+      .from(classrooms)
+      .where(eq(classrooms.id, classroomId))
+      .limit(1);
+    
+    if (results.length === 0) {
+      return NextResponse.json({ 
+        success: false,
+        error: 'Course not found',
+        message: `Course with ID "${classroomId}" does not exist`
+      }, { status: 404 });
     }
     
-    // 如果 IndexedDB 没有，尝试从服务器获取
-    if (!stage) {
-      console.log('Fetching classroom from server:', classroomId);
+    const serverClassroom = results[0];
+    
+    // 从 Blob 获取完整数据
+    const data = (serverClassroom.dataUrl ? await getClassroomData(classroomId) : null) || {} as any;
+    
+    // Debug: 检查原始数据中的音频 URL 格式
+    if (data.scenes) {
+      for (const scene of data.scenes) {
+        if (scene.actions) {
+          for (const action of scene.actions) {
+            if (action.type === 'speech') {
+              console.log(`[Debug] Speech action audioUrl format: ${action.audioUrl ? (action.audioUrl.startsWith('data:') ? 'data URL' : action.audioUrl.substring(0, 50)) : 'undefined'}, audioId: ${action.audioId || action.id}`);
+            }
+          }
+        }
+      }
+    }
+    
+    // 下载媒体文件并还原为data URL
+    const mediaData: Record<string, string> = {};
+    if (serverClassroom.dataUrl) {
+      const mediaFiles = await listClassroomMedia(classroomId);
+      console.log(`Found ${mediaFiles.length} media files to download`);
+      console.log(`Media files: ${JSON.stringify(mediaFiles)}`);
       
-      const pgDb = await ensureDb();
-      
-      // 从 PostgreSQL 获取元数据
-      const results = await pgDb.select()
-        .from(classrooms)
-        .where(eq(classrooms.id, classroomId))
-        .limit(1);
-      
-      if (results.length === 0) {
-        return NextResponse.json({ 
-          success: false,
-          error: 'Course not found',
-          message: `Course with ID "${classroomId}" does not exist`
-        }, { status: 404 });
+      for (const mediaFile of mediaFiles) {
+        if (!mediaFile) continue;
+        const mediaId = mediaFile.replace(/\.[^.]+$/, '');
+        console.log(`Downloading media: ${mediaFile} -> mediaId: ${mediaId}`);
+        const dataUrl = await getMediaFile(classroomId, mediaFile);
+        if (dataUrl) {
+          mediaData[mediaId] = dataUrl;
+          console.log(`Successfully downloaded media: ${mediaId}`);
+        } else {
+          console.log(`Failed to download media: ${mediaId}`);
+        }
       }
       
-      const serverClassroom = results[0];
+      console.log(`Total media data loaded: ${Object.keys(mediaData).length} items`);
+      console.log(`Media data keys: ${JSON.stringify(Object.keys(mediaData))}`);
       
-      // 从 Blob 获取完整数据
-      const data = (serverClassroom.dataUrl ? await getClassroomData(classroomId) : null) || {} as any;
-      
-      // Debug: 检查原始数据中的音频 URL 格式
+      // Debug: 检查原始数据中的音频ID
       if (data.scenes) {
         for (const scene of data.scenes) {
           if (scene.actions) {
             for (const action of scene.actions) {
               if (action.type === 'speech') {
-                console.log(`[Debug] Speech action audioUrl format: ${action.audioUrl ? (action.audioUrl.startsWith('data:') ? 'data URL' : action.audioUrl.substring(0, 50)) : 'undefined'}, audioId: ${action.audioId || action.id}`);
+                const audioId = action.audioId || action.id;
+                console.log(`[Debug] Speech action - audioId: ${audioId}, audioUrl: ${action.audioUrl ? action.audioUrl.substring(0, 30) : 'undefined'}, hasMedia: ${mediaData[audioId] ? 'yes' : 'no'}`);
               }
             }
           }
         }
       }
       
-      // 下载媒体文件并还原为data URL
-      const mediaData: Record<string, string> = {};
-      if (serverClassroom.dataUrl) {
-        const mediaFiles = await listClassroomMedia(classroomId);
-        console.log(`Found ${mediaFiles.length} media files to download`);
+      // 还原媒体文件为data URL
+      if (Object.keys(mediaData).length > 0 && data.stage && data.scenes) {
+        const restoredData = restoreMediaDataUrls(data, mediaData);
+        data.stage = restoredData.stage;
+        data.scenes = restoredData.scenes;
         
-        for (const mediaFile of mediaFiles) {
-          if (!mediaFile) continue;
-          const mediaId = mediaFile.replace(/\.[^.]+$/, '');
-          const dataUrl = await getMediaFile(classroomId, mediaFile);
-          if (dataUrl) {
-            mediaData[mediaId] = dataUrl;
+        // Debug: 检查还原后的数据
+        console.log('Media restored, checking audio URLs...');
+        if (data.scenes) {
+          for (const scene of data.scenes) {
+            if (scene.actions) {
+              for (const action of scene.actions) {
+                if (action.type === 'speech') {
+                  console.log(`[Debug] After restore - audioUrl: ${action.audioUrl ? (action.audioUrl.startsWith('data:') ? 'data URL' : action.audioUrl.substring(0, 30)) : 'undefined'}`);
+                }
+              }
+            }
           }
         }
-        
-        // 还原媒体文件为data URL
-        if (Object.keys(mediaData).length > 0 && data.stage && data.scenes) {
-          const restoredData = restoreMediaDataUrls(data, mediaData);
-          data.stage = restoredData.stage;
-          data.scenes = restoredData.scenes;
-        }
       }
-      
-      stage = {
-        id: serverClassroom.id,
-        name: serverClassroom.name,
-        description: serverClassroom.description,
-        createdAt: (serverClassroom.createdAt || 0) * 1000,
-        updatedAt: (serverClassroom.updatedAt || 0) * 1000,
-        languageDirective: data.languageDirective,
-        style: data.style,
-        currentSceneId: data.currentSceneId,
-        agentIds: data.agentIds,
-      };
-      
-      scenes = data.scenes || [];
-      console.log(`Found ${scenes.length} scenes from Blob`);
     }
+    
+    stage = {
+      id: serverClassroom.id,
+      name: serverClassroom.name,
+      description: serverClassroom.description,
+      createdAt: (serverClassroom.createdAt || 0) * 1000,
+      updatedAt: (serverClassroom.updatedAt || 0) * 1000,
+      languageDirective: data.languageDirective,
+      style: data.style,
+      currentSceneId: data.currentSceneId,
+      agentIds: data.agentIds,
+    };
+    
+    scenes = data.scenes || [];
+    console.log(`Found ${scenes.length} scenes from Blob`);
     
     // 返回课程详情（包含场景）
     return NextResponse.json({ 

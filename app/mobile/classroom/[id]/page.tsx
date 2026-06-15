@@ -143,6 +143,11 @@ export default function MobileClassroomPage() {
     onSpeechEnd: () => {
       console.log('朗读结束');
     },
+    onEnd: () => {
+      // 当前场景播放完成，自动前进到下一个场景
+      console.log('[Page] Scene playback ended, advancing to next scene');
+      handleNextScene();
+    },
   });
 
   // Navigation handlers

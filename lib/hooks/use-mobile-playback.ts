@@ -64,6 +64,10 @@ export function useMobilePlayback({
   // Sync currentActionIndex with ref
   useEffect(() => {
     actionIndexRef.current = currentActionIndex;
+    // Reset last processed index when action index changes (except when advancing normally)
+    if (currentActionIndex < lastProcessedIndexRef.current) {
+      lastProcessedIndexRef.current = -1;
+    }
   }, [currentActionIndex]);
 
   // Cleanup on unmount
@@ -95,12 +99,22 @@ export function useMobilePlayback({
     onNextAction?.();
   }, [actions.length, onEnd, onNextAction]);
 
+  // Track the last processed action index to prevent duplicates
+  const lastProcessedIndexRef = useRef(-1);
+  
   // Process current action
   const processAction = useCallback(async (index: number) => {
     if (!isMountedRef.current) return;
     if (index < 0 || index >= actions.length) {
       return;
     }
+
+    // Prevent processing the same action multiple times
+    if (lastProcessedIndexRef.current === index) {
+      console.log('[MobilePlayback] Skipping duplicate action:', index);
+      return;
+    }
+    lastProcessedIndexRef.current = index;
 
     // Set processing flag
     isProcessingRef.current = true;
@@ -126,9 +140,19 @@ export function useMobilePlayback({
         let audioStarted = false;
         try {
           console.log('[MobilePlayback] Audio action - audioId:', speechAction.audioId, ', audioUrl:', speechAction.audioUrl ? (speechAction.audioUrl.startsWith('data:') ? 'data URL' : speechAction.audioUrl.substring(0, 50)) : 'undefined');
+          
+          // Check if audioUrl is an external URL that needs proxy
+          let audioUrlToPlay = speechAction.audioUrl;
+          if (audioUrlToPlay && (audioUrlToPlay.startsWith('http://open.maic.chat') || audioUrlToPlay.startsWith('https://open.maic.chat') || 
+                                 audioUrlToPlay.startsWith('http://www.viete.xyz') || audioUrlToPlay.startsWith('https://www.viete.xyz'))) {
+            // Use proxy to avoid CORS issues
+            audioUrlToPlay = `/api/proxy-audio?url=${encodeURIComponent(audioUrlToPlay)}`;
+            console.log('[MobilePlayback] Using proxy for audio URL');
+          }
+          
           audioStarted = await audioPlayerRef.current?.play(
             speechAction.audioId || '', 
-            speechAction.audioUrl
+            audioUrlToPlay
           ) ?? false;
           console.log('[MobilePlayback] Audio started:', audioStarted);
         } catch (error: any) {
