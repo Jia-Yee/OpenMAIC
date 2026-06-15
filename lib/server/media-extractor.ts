@@ -8,10 +8,13 @@ export interface MediaFile {
   filename: string;
 }
 
-// Check if URL is a Vercel Blob URL
+// Check if URL is a Vercel Blob URL or external media server URL
 function isBlobUrl(url: string): boolean {
   if (!url || typeof url !== 'string') return false;
-  return url.includes('.blob.vercel-storage.com') || url.includes('.vercel-storage.com');
+  return url.includes('.vercel-storage.com') || 
+         url.includes('open.maic.chat') ||
+         url.includes('viete.xyz') ||
+         url.includes('vercel.app');
 }
 
 export function extractMediaFromClassroom(data: {
@@ -61,16 +64,26 @@ export function extractMediaFromClassroom(data: {
 
   const extractFromActions = (actions: any[]) => {
     for (const action of actions) {
-      if (action.type === 'speech' && action.audioUrl && (action.audioUrl.startsWith('data:') || isBlobUrl(action.audioUrl))) {
+      if (action.type === 'speech') {
         const audioId = action.audioId || action.id;
         if (audioId) {
-          const ext = getExtensionFromDataUrl(action.audioUrl) || 'mp3';
-          mediaFiles.push({
-            id: audioId,
-            src: action.audioUrl,
-            type: 'audio',
-            filename: `${audioId}.${ext}`,
-          });
+          // 如果有 audioUrl，提取它
+          if (action.audioUrl && (action.audioUrl.startsWith('data:') || isBlobUrl(action.audioUrl))) {
+            const ext = getExtensionFromDataUrl(action.audioUrl) || 'mp3';
+            mediaFiles.push({
+              id: audioId,
+              src: action.audioUrl,
+              type: 'audio',
+              filename: `${audioId}.${ext}`,
+            });
+          } else if (action.audioUrl) {
+            // audioUrl 存在但不是 data: 或 Blob URL，记录警告
+            console.warn(`[MediaExtractor] Unsupported audio URL format for action ${audioId}: ${action.audioUrl.substring(0, 50)}...`);
+          }
+          // 如果没有 audioUrl，但有 audioId，也记录下来（可能需要从其他地方获取）
+          else {
+            console.warn(`[MediaExtractor] Speech action has audioId but no audioUrl: ${audioId}`);
+          }
         }
       }
     }

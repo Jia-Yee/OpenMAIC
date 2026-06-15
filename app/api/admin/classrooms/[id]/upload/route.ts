@@ -4,6 +4,8 @@ import { courses, grades, textbooks, subjects, classrooms } from '@/lib/db/schem
 import { eq } from 'drizzle-orm';
 import { uploadClassroomData, uploadMediaFile } from '@/lib/server/blob-storage';
 import { extractMediaFromClassroom, replaceMediaUrlsInClassroom } from '@/lib/server/media-extractor';
+import { generateTTS } from '@/lib/audio/tts-providers';
+import { resolveTTSApiKey, resolveTTSBaseUrl } from '@/lib/server/provider-config';
 
 /**
  * POST /api/admin/classrooms/[id]/upload
@@ -40,8 +42,11 @@ export async function POST(
     // 上传完整数据到 Vercel Blob
     let dataUrl = '';
     if (data && Object.keys(data).length > 0) {
+      // 先为没有音频的 speech actions 生成音频
+      const processedData = await generateMissingAudio(data);
+      
       // 提取媒体文件
-      const mediaFiles = extractMediaFromClassroom(data);
+      const mediaFiles = extractMediaFromClassroom(processedData);
       console.log(`Found ${mediaFiles.length} media files to upload`);
       
       // 上传媒体文件并构建媒体URL映射
@@ -53,10 +58,10 @@ export async function POST(
       }
       
       // 将数据URL替换为Blob URL
-      const processedData = replaceMediaUrlsInClassroom(data, mediaMap);
+      const finalData = replaceMediaUrlsInClassroom(processedData, mediaMap);
       
       // 上传处理后的JSON数据
-      dataUrl = await uploadClassroomData(classroomId, processedData);
+      dataUrl = await uploadClassroomData(classroomId, finalData);
       console.log(`Uploaded classroom data to Blob: ${dataUrl}`);
     }
 
@@ -152,4 +157,60 @@ export async function POST(
       message: error instanceof Error ? error.message : 'Unknown error',
     }, { status: 500 });
   }
+}
+
+async function generateMissingAudio(data: any): Promise<any> {
+  const ttsProviderId = process.env.TTS_PROVIDER || 'azure';
+  const ttsVoice = process.env.TTS_VOICE || 'zh-CN-XiaoxiaoNeural';
+  
+  const apiKey = resolveTTSApiKey(ttsProviderId as any, undefined);
+  const baseUrl = resolveTTSBaseUrl(ttsProviderId as any, undefined);
+  
+  // 复制数据以避免修改原数据
+  const newData = JSON.parse(JSON.stringify(data));
+  
+  let generatedCount = 0;
+  
+  if (newData.scenes) {
+    for (const scene of newData.scenes) {
+      if (scene.actions) {
+        for (const action of scene.actions) {
+          if (action.type === 'speech' && action.text && !action.audioUrl) {
+            const audioId = action.audioId || action.id;
+            if (audioId) {
+              try {
+                console.log(`Generating TTS for action ${audioId}...`);
+                
+                const config = {
+                  providerId: ttsProviderId,
+                  modelId: undefined,
+                  voice: ttsVoice,
+                  speed: 1.0,
+                  apiKey,
+                  baseUrl,
+                };
+                
+                const { audio, format } = await generateTTS(config as any, action.text);
+                
+                // 转换为 data URL
+                const base64 = Buffer.from(audio).toString('base64');
+                action.audioUrl = `data:audio/${format};base64,${base64}`;
+                
+                console.log(`Generated TTS for action ${audioId}`);
+                generatedCount++;
+              } catch (error) {
+                console.error(`Failed to generate TTS for action ${audioId}:`, error);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  
+  if (generatedCount > 0) {
+    console.log(`Generated ${generatedCount} missing audio files`);
+  }
+  
+  return newData;
 }
