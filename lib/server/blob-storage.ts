@@ -94,12 +94,13 @@ export async function uploadMediaFile(classroomId: string, mediaId: string, data
   if (blobModule && token) {
     let blob: Blob;
     
-    // Check if it's a data URL or a Blob URL
+    // Check if it's a data URL
     if (dataUrlOrBlobUrl.startsWith('data:')) {
       blob = dataUrlToBlob(dataUrlOrBlobUrl);
-    } else if (dataUrlOrBlobUrl.includes('.blob.vercel-storage.com') || dataUrlOrBlobUrl.includes('.vercel-storage.com')) {
-      // It's a Vercel Blob URL, need to download first
-      console.log(`Downloading existing Blob media: ${mediaId}`);
+    } 
+    // Check if it's a Vercel Blob URL (requires Authorization header)
+    else if (dataUrlOrBlobUrl.includes('.blob.vercel-storage.com') || dataUrlOrBlobUrl.includes('.vercel-storage.com')) {
+      console.log(`Downloading Vercel Blob media: ${mediaId}`);
       const response = await fetch(dataUrlOrBlobUrl, {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -107,11 +108,23 @@ export async function uploadMediaFile(classroomId: string, mediaId: string, data
       });
       
       if (!response.ok) {
-        throw new Error(`Failed to download existing Blob media: ${response.status}`);
+        throw new Error(`Failed to download Vercel Blob media: ${response.status}`);
       }
       
       blob = await response.blob();
-    } else {
+    }
+    // Check if it's an external URL (like open.maic.chat, viete.xyz, vercel.app)
+    else if (dataUrlOrBlobUrl.startsWith('http://') || dataUrlOrBlobUrl.startsWith('https://')) {
+      console.log(`Downloading external media: ${mediaId} from ${dataUrlOrBlobUrl.substring(0, 50)}...`);
+      const response = await fetch(dataUrlOrBlobUrl);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to download external media: ${response.status}`);
+      }
+      
+      blob = await response.blob();
+    }
+    else {
       throw new Error(`Unsupported media URL format: ${dataUrlOrBlobUrl.substring(0, 50)}...`);
     }
     
