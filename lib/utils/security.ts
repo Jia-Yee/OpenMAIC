@@ -27,6 +27,11 @@ export function isTrustedImageUrl(url: string): boolean {
     return true;
   }
   
+  // 信任 API 路径下的媒体文件
+  if (url.startsWith('/api/classrooms/')) {
+    return true;
+  }
+  
   try {
     const parsedUrl = new URL(url);
     
