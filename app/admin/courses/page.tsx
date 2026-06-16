@@ -209,20 +209,113 @@ export default function CoursesPage() {
 
       for (const stage of stages) {
         try {
-          const sceneRecords = await db.scenes.where('stageId').equals(stage.id).toArray();
-          
-          const res = await fetch(`/api/admin/classrooms/${stage.id}/upload`, {
+          const sceneRecords = await db.scenes.where('stageId').equals(stage.id).sortBy('order');
+          const audioRecords = await db.audioFiles.toArray();
+          const mediaRecords = await db.mediaFiles.where('stageId').equals(stage.id).toArray();
+
+          // Build manifest.json with audioRef
+          const manifest: {
+            stage: typeof stage;
+            scenes: typeof sceneRecords;
+            mediaIndex: Record<string, { type: string; format?: string; mimeType?: string; missing: boolean }>;
+          } = {
+            stage,
+            scenes: sceneRecords,
+            mediaIndex: {},
+          };
+
+          // Collect audio files
+          const audioFilesForUpload: { path: string; content: ArrayBuffer; mimeType: string }[] = [];
+          for (const scene of sceneRecords) {
+            if (!scene.actions) continue;
+            for (const action of scene.actions) {
+              if (action.type === 'speech') {
+                const audioId = (action as any).audioId || action.id;
+                if (audioId) {
+                  const audioRecord = audioRecords.find(r => r.id === audioId);
+                  if (audioRecord && audioRecord.blob) {
+                    const arrayBuffer = await audioRecord.blob.arrayBuffer();
+                    const format = audioRecord.format || 'mp3';
+                    const audioPath = `audio/${audioId}.${format}`;
+                    audioFilesForUpload.push({
+                      path: audioPath,
+                      content: arrayBuffer,
+                      mimeType: `audio/${format}`,
+                    });
+                    manifest.mediaIndex[audioPath] = { type: 'audio', format, missing: false };
+                    (action as any).audioRef = audioPath;
+                  }
+                }
+              }
+            }
+          }
+
+          // Collect media files
+          const mediaFilesForUpload: { path: string; content: ArrayBuffer; mimeType: string }[] = [];
+          for (const mediaRecord of mediaRecords) {
+            if (mediaRecord.blob && !mediaRecord.error) {
+              const elementId = mediaRecord.id.includes(':')
+                ? mediaRecord.id.split(':').slice(1).join(':')
+                : mediaRecord.id;
+              const ext = mediaRecord.mimeType.split('/')[1] || 'png';
+              const mediaPath = `media/${elementId}.${ext}`;
+              mediaFilesForUpload.push({
+                path: mediaPath,
+                content: await mediaRecord.blob.arrayBuffer(),
+                mimeType: mediaRecord.mimeType,
+              });
+              manifest.mediaIndex[mediaPath] = {
+                type: mediaRecord.type,
+                mimeType: mediaRecord.mimeType,
+                missing: false,
+              };
+            }
+          }
+
+          // Build files list with manifest
+          const filesForUpload: { path: string; content: string | ArrayBuffer; mimeType: string }[] = [
+            {
+              path: 'manifest.json',
+              content: JSON.stringify(manifest),
+              mimeType: 'application/json',
+            },
+            ...audioFilesForUpload,
+            ...mediaFilesForUpload,
+          ];
+
+          // Convert ArrayBuffer to base64 for JSON transport
+          const filesForJson = filesForUpload.map((f) => {
+            if (f.content instanceof ArrayBuffer) {
+              const bytes = new Uint8Array(f.content);
+              let binary = '';
+              for (let i = 0; i < bytes.byteLength; i++) {
+                binary += String.fromCharCode(bytes[i]);
+              }
+              return {
+                path: f.path,
+                mimeType: f.mimeType,
+                contentBase64: btoa(binary),
+              };
+            }
+            return {
+              path: f.path,
+              mimeType: f.mimeType,
+              content: f.content,
+            };
+          });
+
+          console.log(`[Sync] Uploading classroom ${stage.id}: ${audioFilesForUpload.length} audio, ${mediaFilesForUpload.length} media`);
+
+          // Use folder upload API
+          const res = await fetch(`/api/classrooms/${stage.id}/folder`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               id: stage.id,
               name: stage.name,
-              description: stage.description,
+              description: stage.description || '',
               sceneCount: sceneRecords.length,
-              data: {
-                stage: stage,
-                scenes: sceneRecords,
-              },
+              files: filesForJson,
             }),
           });
 

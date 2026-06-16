@@ -248,6 +248,18 @@ export function replaceMediaUrlsInClassroom(
   return { stage: newStage, scenes: newScenes };
 }
 
+function findMediaByAnyId(mediaData: Record<string, string>, id: string): string | undefined {
+  if (mediaData[id]) {
+    return mediaData[id];
+  }
+  for (const key of Object.keys(mediaData)) {
+    if (key === id || key.startsWith(id + '.') || id.startsWith(key + '.')) {
+      return mediaData[key];
+    }
+  }
+  return undefined;
+}
+
 export function restoreMediaDataUrls(
   data: { stage: Stage; scenes: Scene[] },
   mediaData: Record<string, string>
@@ -255,7 +267,7 @@ export function restoreMediaDataUrls(
   const replaceInElements = (elements: PPTElement[]): PPTElement[] => {
     return elements.map((element) => {
       if (element && element.id && (element.type === 'image' || element.type === 'video' || element.type === 'audio')) {
-        const mediaSrc = mediaData[element.id];
+        const mediaSrc = findMediaByAnyId(mediaData, element.id);
         if (mediaSrc) {
           return { ...element, src: mediaSrc };
         }
@@ -269,7 +281,7 @@ export function restoreMediaDataUrls(
       if (action.type === 'speech') {
         const audioId = action.audioId || action.id;
         if (audioId) {
-          const audioSrc = mediaData[audioId];
+          const audioSrc = findMediaByAnyId(mediaData, audioId);
           if (audioSrc) {
             return { ...action, audioUrl: audioSrc };
           }

@@ -12,25 +12,45 @@ import { createLogger } from '@/lib/logger';
 
 const log = createLogger('ImportClassroom');
 
-// Sync newly imported classroom to server
 async function syncImportedClassroomToServer(
   stageId: string,
-  stage: any,
-  scenes: any[]
+  name: string,
+  description: string,
+  sceneCount: number,
+  files: { path: string; content: string | ArrayBuffer; mimeType: string }[]
 ) {
   try {
-    const response = await fetch('/api/classrooms/sync', {
+    log.info(`Syncing imported classroom folder to server: ${stageId}, files: ${files.length}`);
+
+    const filesForJson = files.map((f) => {
+      if (f.content instanceof ArrayBuffer) {
+        const bytes = new Uint8Array(f.content);
+        let binary = '';
+        for (let i = 0; i < bytes.byteLength; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        return {
+          path: f.path,
+          mimeType: f.mimeType,
+          contentBase64: btoa(binary),
+        };
+      }
+      return {
+        path: f.path,
+        mimeType: f.mimeType,
+        content: f.content,
+      };
+    });
+
+    const response = await fetch(`/api/classrooms/${stageId}/folder`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         id: stageId,
-        name: stage.name || 'Imported Classroom',
-        description: stage.description,
-        sceneCount: scenes.length,
-        data: {
-          stage,
-          scenes,
-        },
+        name,
+        description,
+        sceneCount,
+        files: filesForJson,
       }),
     });
 
@@ -68,7 +88,6 @@ export function useImportClassroom(onSuccess?: () => void) {
       const file = e.target.files?.[0];
       if (!file) return;
 
-      // Reset input so same file can be re-selected
       e.target.value = '';
 
       setImporting(true);
@@ -76,13 +95,11 @@ export function useImportClassroom(onSuccess?: () => void) {
       const toastId = toast.loading(t('import.parsing'));
 
       try {
-        // 0. Size check — warn for files over 200MB
         const MAX_SAFE_SIZE = 200 * 1024 * 1024;
         if (file.size > MAX_SAFE_SIZE) {
           log.warn(`Large ZIP file: ${(file.size / 1024 / 1024).toFixed(0)}MB`);
         }
 
-        // 1. Parse ZIP
         const JSZip = (await import('jszip')).default;
         const zip = await JSZip.loadAsync(file);
 
@@ -92,7 +109,6 @@ export function useImportClassroom(onSuccess?: () => void) {
           return;
         }
 
-        // 2. Validate
         setPhase('validating');
         toast.loading(t('import.validating'), { id: toastId });
 
@@ -110,14 +126,11 @@ export function useImportClassroom(onSuccess?: () => void) {
           return;
         }
 
-        // 3. Generate new IDs
         const newStageId = nanoid();
         const now = Date.now();
 
-        // Agent ID mapping: index → new ID
         const newAgentIds: string[] = (manifest.agents ?? []).map(() => nanoid());
 
-        // Audio ref → new ID mapping
         const audioRefToNewId: Record<string, string> = {};
         for (const [zipPath, entry] of Object.entries(manifest.mediaIndex ?? {})) {
           if (entry.type === 'audio' && !entry.missing) {
@@ -125,7 +138,6 @@ export function useImportClassroom(onSuccess?: () => void) {
           }
         }
 
-        // Media ref → new ID mapping
         const mediaRefToNewId: Record<string, string> = {};
         for (const [zipPath, entry] of Object.entries(manifest.mediaIndex ?? {})) {
           if ((entry.type === 'generated' || entry.type === 'image') && !entry.missing) {
@@ -135,16 +147,30 @@ export function useImportClassroom(onSuccess?: () => void) {
           }
         }
 
-        // 4. Write media to IndexedDB
+        const filesForUpload: { path: string; content: string | ArrayBuffer; mimeType: string }[] = [];
+
+        filesForUpload.push({
+          path: 'manifest.json',
+          content: manifestText,
+          mimeType: 'application/json',
+        });
+
         setPhase('writingMedia');
         toast.loading(t('import.writingMedia'), { id: toastId });
 
-        // Write audio files one at a time
         for (const [zipPath, newId] of Object.entries(audioRefToNewId)) {
           const zipEntry = zip.file(zipPath);
           if (!zipEntry) continue;
           const blob = await zipEntry.async('blob');
+          const arrayBuffer = await blob.arrayBuffer();
           const meta = manifest.mediaIndex[zipPath];
+
+          filesForUpload.push({
+            path: zipPath,
+            content: arrayBuffer,
+            mimeType: `audio/${meta.format || 'mp3'}`,
+          });
+
           const record: AudioFileRecord = {
             id: newId,
             blob,
@@ -156,12 +182,18 @@ export function useImportClassroom(onSuccess?: () => void) {
           await db.audioFiles.put(record);
         }
 
-        // Write generated media files one at a time
         for (const [zipPath, newId] of Object.entries(mediaRefToNewId)) {
           const zipEntry = zip.file(zipPath);
           if (!zipEntry) continue;
           const blob = await zipEntry.async('blob');
+          const arrayBuffer = await blob.arrayBuffer();
           const meta = manifest.mediaIndex[zipPath];
+
+          filesForUpload.push({
+            path: zipPath,
+            content: arrayBuffer,
+            mimeType: meta.mimeType || 'image/jpeg',
+          });
 
           const record: MediaFileRecord = {
             id: newId,
@@ -175,21 +207,23 @@ export function useImportClassroom(onSuccess?: () => void) {
             createdAt: now,
           };
 
-          // Check for poster before writing to avoid redundant put
           const posterPath = zipPath.replace(/\.\w+$/, '.poster.jpg');
           const posterEntry = zip.file(posterPath);
           if (posterEntry) {
             record.poster = await posterEntry.async('blob');
+            filesForUpload.push({
+              path: posterPath,
+              content: await record.poster.arrayBuffer(),
+              mimeType: 'image/jpeg',
+            });
           }
 
           await db.mediaFiles.put(record);
         }
 
-        // 5. Write course data
         setPhase('writingCourse');
         toast.loading(t('import.writingCourse'), { id: toastId });
 
-        // Write stage
         await db.stages.put({
           id: newStageId,
           name: manifest.stage.name || 'Imported Classroom',
@@ -201,7 +235,6 @@ export function useImportClassroom(onSuccess?: () => void) {
           agentIds: newAgentIds.length > 0 ? newAgentIds : undefined,
         });
 
-        // Write agents
         if (manifest.agents?.length) {
           const agentRecords: GeneratedAgentRecord[] = manifest.agents.map((a, i) => ({
             id: newAgentIds[i],
@@ -217,7 +250,6 @@ export function useImportClassroom(onSuccess?: () => void) {
           await db.generatedAgents.bulkPut(agentRecords);
         }
 
-        // Write scenes with rewritten references
         const sceneRecords = manifest.scenes.map((mScene: ManifestScene, index: number) => {
           const newSceneId = nanoid();
 
@@ -252,23 +284,14 @@ export function useImportClassroom(onSuccess?: () => void) {
         });
         await db.scenes.bulkPut(sceneRecords);
 
-        // 6. Sync to server
         await syncImportedClassroomToServer(
           newStageId,
-          {
-            id: newStageId,
-            name: manifest.stage.name || 'Imported Classroom',
-            description: manifest.stage.description,
-            languageDirective: manifest.stage.language,
-            style: manifest.stage.style,
-            createdAt: manifest.stage.createdAt || now,
-            updatedAt: now,
-            agentIds: newAgentIds.length > 0 ? newAgentIds : undefined,
-          },
-          sceneRecords
+          manifest.stage.name || 'Imported Classroom',
+          manifest.stage.description || '',
+          sceneRecords.length,
+          filesForUpload
         );
 
-        // 7. Done
         setPhase('done');
         toast.success(t('import.success'), { id: toastId });
         onSuccess?.();

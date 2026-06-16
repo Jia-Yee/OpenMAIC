@@ -2,10 +2,11 @@ import { NextResponse } from 'next/server';
 import { ensureDb } from '@/lib/db';
 import { courses, grades, textbooks, subjects, classrooms } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
-import { uploadClassroomData, uploadMediaFile } from '@/lib/server/blob-storage';
-import { extractMediaFromClassroom, replaceMediaUrlsInClassroom } from '@/lib/server/media-extractor';
+import { processClassroomMedia } from '@/lib/server/classroom-media-processor';
 import { generateTTS } from '@/lib/audio/tts-providers';
-import { resolveTTSApiKey, resolveTTSBaseUrl } from '@/lib/server/provider-config';
+import { resolveTTSApiKey, resolveTTSBaseUrl, getServerTTSProviders } from '@/lib/server/provider-config';
+import { TTS_PROVIDERS, DEFAULT_TTS_VOICES } from '@/lib/audio/constants';
+import type { TTSProviderId } from '@/lib/audio/types';
 
 /**
  * POST /api/admin/classrooms/[id]/upload
@@ -39,30 +40,13 @@ export async function POST(
 
     const now = Math.floor(Date.now() / 1000);
 
-    // 上传完整数据到 Vercel Blob
     let dataUrl = '';
     if (data && Object.keys(data).length > 0) {
-      // 先为没有音频的 speech actions 生成音频
       const processedData = await generateMissingAudio(data);
       
-      // 提取媒体文件
-      const mediaFiles = extractMediaFromClassroom(processedData);
-      console.log(`Found ${mediaFiles.length} media files to upload`);
-      
-      // 上传媒体文件并构建媒体URL映射
-      const mediaMap: Record<string, string> = {};
-      for (const media of mediaFiles) {
-        const url = await uploadMediaFile(classroomId, media.filename, media.src);
-        mediaMap[media.id] = url;
-        console.log(`Uploaded media ${media.id} to ${url}`);
-      }
-      
-      // 将数据URL替换为Blob URL
-      const finalData = replaceMediaUrlsInClassroom(processedData, mediaMap);
-      
-      // 上传处理后的JSON数据
-      dataUrl = await uploadClassroomData(classroomId, finalData);
-      console.log(`Uploaded classroom data to Blob: ${dataUrl}`);
+      const result = await processClassroomMedia(classroomId, processedData);
+      dataUrl = result.dataUrl;
+      console.log(`[AdminUpload] Media processing complete, uploaded ${Object.keys(result.mediaMap).length} media files`);
     }
 
     const db = await ensureDb();
@@ -160,46 +144,66 @@ export async function POST(
 }
 
 async function generateMissingAudio(data: any): Promise<any> {
-  const ttsProviderId = process.env.TTS_PROVIDER || 'azure';
-  const ttsVoice = process.env.TTS_VOICE || 'zh-CN-XiaoxiaoNeural';
-  
-  const apiKey = resolveTTSApiKey(ttsProviderId as any, undefined);
-  const baseUrl = resolveTTSBaseUrl(ttsProviderId as any, undefined);
-  
+  // Resolve TTS provider from server config (excludes browser-native-tts)
+  const serverTtsProviders = getServerTTSProviders();
+  const ttsProviderIds = Object.keys(serverTtsProviders).filter(
+    (id) => id !== 'browser-native-tts',
+  );
+
+  if (ttsProviderIds.length === 0) {
+    console.warn('[generateMissingAudio] No server TTS provider configured, skipping TTS generation');
+    return data;
+  }
+
+  const ttsProviderId = ttsProviderIds[0] as TTSProviderId;
+  const ttsVoice = process.env.TTS_VOICE || DEFAULT_TTS_VOICES[ttsProviderId as keyof typeof DEFAULT_TTS_VOICES] || 'alloy';
+
+  const apiKey = resolveTTSApiKey(ttsProviderId, undefined);
+  const baseUrl = resolveTTSBaseUrl(ttsProviderId, undefined);
+
+  if (!apiKey) {
+    console.warn(`[generateMissingAudio] No API key for TTS provider "${ttsProviderId}", skipping TTS generation`);
+    return data;
+  }
+
+  console.log(`[generateMissingAudio] Using TTS provider: ${ttsProviderId}, voice: ${ttsVoice}`);
+
   // 复制数据以避免修改原数据
   const newData = JSON.parse(JSON.stringify(data));
-  
+
   let generatedCount = 0;
-  
+  let skippedCount = 0;
+
   if (newData.scenes) {
     for (const scene of newData.scenes) {
       if (scene.actions) {
         for (const action of scene.actions) {
-          if (action.type === 'speech' && action.text && !action.audioUrl) {
+          if (action.type === 'speech' && action.text && !action.audioUrl && !action.audioRef) {
             const audioId = action.audioId || action.id;
             if (audioId) {
               try {
                 console.log(`Generating TTS for action ${audioId}...`);
-                
+
                 const config = {
                   providerId: ttsProviderId,
-                  modelId: undefined,
+                  modelId: TTS_PROVIDERS[ttsProviderId as keyof typeof TTS_PROVIDERS]?.defaultModelId,
                   voice: ttsVoice,
                   speed: 1.0,
                   apiKey,
                   baseUrl,
                 };
-                
+
                 const { audio, format } = await generateTTS(config as any, action.text);
-                
+
                 // 转换为 data URL
                 const base64 = Buffer.from(audio).toString('base64');
                 action.audioUrl = `data:audio/${format};base64,${base64}`;
-                
+
                 console.log(`Generated TTS for action ${audioId}`);
                 generatedCount++;
               } catch (error) {
                 console.error(`Failed to generate TTS for action ${audioId}:`, error);
+                skippedCount++;
               }
             }
           }
@@ -207,10 +211,8 @@ async function generateMissingAudio(data: any): Promise<any> {
       }
     }
   }
-  
-  if (generatedCount > 0) {
-    console.log(`Generated ${generatedCount} missing audio files`);
-  }
-  
+
+  console.log(`[generateMissingAudio] Generated ${generatedCount} TTS files, skipped ${skippedCount}`);
+
   return newData;
 }

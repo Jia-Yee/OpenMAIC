@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { saveClassroomToServer, updateClassroomOnServer } from '@/lib/server/classroom-server-db';
-import { uploadClassroomData } from '@/lib/server/blob-storage';
+import { processClassroomMedia } from '@/lib/server/classroom-media-processor';
 import { getDb, initDb } from '@/lib/db';
 import { courses, grades, textbooks, subjects, eq } from '@/lib/db/schema';
 
@@ -27,11 +27,14 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
 
-    // Upload data to Blob and get URL
+    console.log('[SyncAPI] Starting sync for classroom:', id);
+
+    // Process classroom media and upload to Blob
     let dataUrl = '';
     if (data && Object.keys(data).length > 0) {
-      dataUrl = await uploadClassroomData(id, data);
-      console.log(`Uploaded classroom data to Blob: ${dataUrl}`);
+      const result = await processClassroomMedia(id, data);
+      dataUrl = result.dataUrl;
+      console.log(`[SyncAPI] Media processing complete, uploaded ${Object.keys(result.mediaMap).length} media files`);
     }
 
     // Check if classroom exists on server

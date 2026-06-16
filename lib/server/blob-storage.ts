@@ -219,3 +219,144 @@ export async function listClassroomFiles(): Promise<string[]> {
 
   return [];
 }
+
+export interface ClassroomFileEntry {
+  path: string;
+  content: string | ArrayBuffer;
+  mimeType: string;
+}
+
+export async function uploadClassroomFolder(
+  classroomId: string,
+  files: ClassroomFileEntry[]
+): Promise<string[]> {
+  const blobModule = await getBlobModule();
+  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  
+  if (!blobModule || !token) {
+    throw new Error('@vercel/blob module not available. This feature requires deployment to Vercel.');
+  }
+
+  console.log(`[BlobStorage] Cleaning up old files for classroom: ${classroomId}`);
+  try {
+    const { blobs: existingBlobs } = await blobModule.list({
+      prefix: `classrooms/${classroomId}/`,
+      token: token,
+    });
+    if (existingBlobs && existingBlobs.length > 0) {
+      const oldUrls = existingBlobs
+        .filter((b: any) => b.url)
+        .map((b: any) => b.url);
+      if (oldUrls.length > 0) {
+        await blobModule.del(oldUrls, { token: token });
+        console.log(`[BlobStorage] Deleted ${oldUrls.length} old files`);
+      }
+    }
+  } catch (cleanupError) {
+    console.warn(`[BlobStorage] Cleanup error (non-fatal):`, cleanupError);
+  }
+
+  const uploadedUrls: string[] = [];
+  
+  for (const file of files) {
+    const blobPath = `classrooms/${classroomId}/${file.path}`;
+    
+    let body: string | Blob;
+    
+    if (file.content instanceof ArrayBuffer) {
+      body = new Blob([file.content], { type: file.mimeType });
+    } else if (typeof file.content === 'string' && file.content.length > 0) {
+      body = file.content;
+    } else {
+      console.error(`[BlobStorage] File has no content: ${file.path}`, {
+        hasContent: 'content' in file,
+        contentType: typeof file.content,
+        keys: Object.keys(file),
+      });
+      throw new Error(`File ${file.path} has no content`);
+    }
+    
+    const { url } = await blobModule.put(blobPath, body, {
+      access: 'private',
+      token: token,
+      allowOverwrite: true,
+      addRandomSuffix: false,
+    });
+    
+    uploadedUrls.push(url);
+    console.log(`[BlobStorage] Uploaded file: ${blobPath}`);
+  }
+  
+  console.log(`[BlobStorage] Uploaded ${uploadedUrls.length} files for classroom: ${classroomId}`);
+  return uploadedUrls;
+}
+
+export async function getClassroomFile(
+  classroomId: string,
+  filePath: string
+): Promise<{ blob: Blob; mimeType: string } | null> {
+  const blobModule = await getBlobModule();
+  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  
+  if (!blobModule || !token) {
+    console.log(`[BlobStorage] Cannot get file: blobModule=${!!blobModule}, token=${!!token}`);
+    return null;
+  }
+
+  const blobPath = `classrooms/${classroomId}/${filePath}`;
+
+  try {
+    const result = await blobModule.get(blobPath, {
+      access: 'private',
+      token: token,
+    });
+    
+    if (!result) {
+      console.log(`[BlobStorage] File not found: ${blobPath}`);
+      return null;
+    }
+    
+    if (result.statusCode !== 200) {
+      console.log(`[BlobStorage] File fetch failed: ${blobPath}, status: ${result.statusCode}`);
+      return null;
+    }
+    
+    const stream = result.stream;
+    if (!stream) {
+      console.log(`[BlobStorage] No stream in response: ${blobPath}`);
+      return null;
+    }
+    
+    const mimeType = result.blob?.contentType || 'application/octet-stream';
+    const size = result.blob?.size;
+    
+    console.log(`[BlobStorage] Fetching stream: ${blobPath}, mime: ${mimeType}, size: ${size}`);
+    
+    // Convert stream to Blob
+    const blob = await new Response(stream).blob();
+    
+    console.log(`[BlobStorage] Successfully fetched: ${blobPath}, size: ${blob.size}`);
+    return { blob, mimeType };
+  } catch (error) {
+    console.error(`[BlobStorage] Error getting file ${filePath}:`, error);
+    return null;
+  }
+}
+
+export async function listClassroomFolder(classroomId: string): Promise<string[]> {
+  const blobModule = await getBlobModule();
+  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  
+  if (!blobModule || !token) {
+    return [];
+  }
+
+  const { blobs } = await blobModule.list({
+    prefix: `classrooms/${classroomId}/`,
+    token: token,
+  });
+  
+  return blobs
+    .filter((blob: any) => blob && blob.path)
+    .map((blob: any) => blob.path.replace(`classrooms/${classroomId}/`, ''));
+}
