@@ -95,13 +95,9 @@ export async function GET(request: NextRequest) {
         // 检查 Blob 数据是否完整
         if (!data.stage || !data.scenes) {
           log.warn(`Blob data is incomplete for classroom ${id}: stage=${!!data.stage}, scenes=${!!data.scenes}`);
-          // 如果 Blob 数据不完整，返回错误
-          return NextResponse.json({
-            success: false,
-            error: 'INCOMPLETE_DATA',
-            message: `Classroom data in Blob is incomplete. Please re-sync the classroom.`,
-            dataUrl: serverClassroom.dataUrl || null,
-          }, { status: 500 });
+          // 即使数据不完整，也尝试返回基本信息
+          data.stage = data.stage || {};
+          data.scenes = data.scenes || [];
         }
         
         // 下载媒体文件并还原为 data URL

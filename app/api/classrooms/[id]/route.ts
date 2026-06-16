@@ -1,40 +1,19 @@
 import { NextResponse } from 'next/server';
-import { db, initDatabase } from '@/lib/utils/database';
-import type { SceneRecord } from '@/lib/utils/database';
 import { ensureDb } from '@/lib/db';
 import { classrooms } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { getClassroomData, getMediaFile, listClassroomMedia } from '@/lib/server/blob-storage';
 import { restoreMediaDataUrls } from '@/lib/server/media-extractor';
 
-let dbInitialized = false;
-
-async function ensureDbInit() {
-  if (!dbInitialized) {
-    try {
-      await initDatabase();
-      dbInitialized = true;
-    } catch (error) {
-      console.error('Failed to initialize database:', error);
-    }
-  }
-}
-
 export async function GET(
-  request: Request,
+  _request: Request,
   context: { params: Promise<{ id: string }> }
 ) {
   try {
     const params = await context.params;
     const classroomId = params.id;
     
-    console.log('Fetching classroom:', classroomId);
-    
-    let stage = null;
-    let scenes = [];
-    
-    // 直接从服务器获取数据，确保音频 URL 被正确处理
-    console.log('Fetching classroom from server:', classroomId);
+    console.log('[ClassroomsAPI] Fetching classroom:', classroomId);
     
     const pgDb = await ensureDb();
     
@@ -44,7 +23,10 @@ export async function GET(
       .where(eq(classrooms.id, classroomId))
       .limit(1);
     
+    console.log('[ClassroomsAPI] PostgreSQL query result:', results.length, 'records');
+    
     if (results.length === 0) {
+      console.log('[ClassroomsAPI] Classroom not found in PostgreSQL:', classroomId);
       return NextResponse.json({ 
         success: false,
         error: 'Course not found',
@@ -53,83 +35,66 @@ export async function GET(
     }
     
     const serverClassroom = results[0];
+    console.log('[ClassroomsAPI] Found classroom:', serverClassroom.name, 'dataUrl:', serverClassroom.dataUrl ? 'exists' : 'empty');
     
     // 从 Blob 获取完整数据
-    const data = (serverClassroom.dataUrl ? await getClassroomData(classroomId) : null) || {} as any;
-    
-    // Debug: 检查原始数据中的音频 URL 格式
-    if (data.scenes) {
-      for (const scene of data.scenes) {
-        if (scene.actions) {
-          for (const action of scene.actions) {
-            if (action.type === 'speech') {
-              console.log(`[Debug] Speech action audioUrl format: ${action.audioUrl ? (action.audioUrl.startsWith('data:') ? 'data URL' : action.audioUrl.substring(0, 50)) : 'undefined'}, audioId: ${action.audioId || action.id}`);
-            }
-          }
+    let data: any = {};
+    if (serverClassroom.dataUrl) {
+      try {
+        const blobData = await getClassroomData(classroomId);
+        if (blobData) {
+          data = blobData;
+          console.log('[ClassroomsAPI] Blob data loaded, has stage:', !!data.stage, 'has scenes:', !!data.scenes);
+        } else {
+          console.log('[ClassroomsAPI] Blob data is null, using empty data');
         }
+      } catch (blobError) {
+        console.error('[ClassroomsAPI] Error loading Blob data:', blobError);
       }
     }
     
-    // 下载媒体文件并还原为data URL
+    // 检查数据完整性
+    if (!data.stage || !data.scenes) {
+      console.log('[ClassroomsAPI] Data incomplete, stage:', !!data.stage, 'scenes:', !!data.scenes);
+      // 即使数据不完整，也尝试返回基本信息
+      data.stage = data.stage || {};
+      data.scenes = data.scenes || [];
+    }
+    
+    // 下载媒体文件并还原为 data URL
     const mediaData: Record<string, string> = {};
     if (serverClassroom.dataUrl) {
-      const mediaFiles = await listClassroomMedia(classroomId);
-      console.log(`Found ${mediaFiles.length} media files to download`);
-      console.log(`Media files: ${JSON.stringify(mediaFiles)}`);
-      
-      for (const mediaFile of mediaFiles) {
-        if (!mediaFile) continue;
-        const mediaId = mediaFile.replace(/\.[^.]+$/, '');
-        console.log(`Downloading media: ${mediaFile} -> mediaId: ${mediaId}`);
-        const dataUrl = await getMediaFile(classroomId, mediaFile);
-        if (dataUrl) {
-          mediaData[mediaId] = dataUrl;
-          console.log(`Successfully downloaded media: ${mediaId}`);
-        } else {
-          console.log(`Failed to download media: ${mediaId}`);
-        }
-      }
-      
-      console.log(`Total media data loaded: ${Object.keys(mediaData).length} items`);
-      console.log(`Media data keys: ${JSON.stringify(Object.keys(mediaData))}`);
-      
-      // Debug: 检查原始数据中的音频ID
-      if (data.scenes) {
-        for (const scene of data.scenes) {
-          if (scene.actions) {
-            for (const action of scene.actions) {
-              if (action.type === 'speech') {
-                const audioId = action.audioId || action.id;
-                console.log(`[Debug] Speech action - audioId: ${audioId}, audioUrl: ${action.audioUrl ? action.audioUrl.substring(0, 30) : 'undefined'}, hasMedia: ${mediaData[audioId] ? 'yes' : 'no'}`);
-              }
-            }
-          }
-        }
-      }
-      
-      // 还原媒体文件为data URL
-      if (Object.keys(mediaData).length > 0 && data.stage && data.scenes) {
-        const restoredData = restoreMediaDataUrls(data, mediaData);
-        data.stage = restoredData.stage;
-        data.scenes = restoredData.scenes;
+      try {
+        const mediaFiles = await listClassroomMedia(classroomId);
+        console.log('[ClassroomsAPI] Found', mediaFiles.length, 'media files');
         
-        // Debug: 检查还原后的数据
-        console.log('Media restored, checking audio URLs...');
-        if (data.scenes) {
-          for (const scene of data.scenes) {
-            if (scene.actions) {
-              for (const action of scene.actions) {
-                if (action.type === 'speech') {
-                  console.log(`[Debug] After restore - audioUrl: ${action.audioUrl ? (action.audioUrl.startsWith('data:') ? 'data URL' : action.audioUrl.substring(0, 30)) : 'undefined'}`);
-                }
-              }
+        for (const mediaFile of mediaFiles) {
+          if (!mediaFile) continue;
+          const mediaId = mediaFile.replace(/\.[^.]+$/, '');
+          try {
+            const dataUrl = await getMediaFile(classroomId, mediaFile);
+            if (dataUrl) {
+              mediaData[mediaId] = dataUrl;
             }
+          } catch (mediaError) {
+            console.error('[ClassroomsAPI] Error loading media file:', mediaFile, mediaError);
           }
         }
+        
+        // 还原媒体文件为 data URL
+        if (Object.keys(mediaData).length > 0 && data.stage && data.scenes) {
+          const restoredData = restoreMediaDataUrls(data, mediaData);
+          data.stage = restoredData.stage;
+          data.scenes = restoredData.scenes;
+          console.log('[ClassroomsAPI] Media restored successfully');
+        }
+      } catch (mediaListError) {
+        console.error('[ClassroomsAPI] Error listing media files:', mediaListError);
       }
     }
     
-    stage = {
+    // 构建 stage 对象
+    const stage = {
       id: serverClassroom.id,
       name: serverClassroom.name,
       description: serverClassroom.description,
@@ -141,8 +106,8 @@ export async function GET(
       agentIds: data.agentIds,
     };
     
-    scenes = data.scenes || [];
-    console.log(`Found ${scenes.length} scenes from Blob`);
+    const scenes = data.scenes || [];
+    console.log('[ClassroomsAPI] Returning', scenes.length, 'scenes');
     
     // 返回课程详情（包含场景）
     return NextResponse.json({ 
@@ -165,7 +130,7 @@ export async function GET(
       scenes: scenes
     });
   } catch (error) {
-    console.error('Failed to fetch classroom:', error);
+    console.error('[ClassroomsAPI] Failed to fetch classroom:', error);
     
     return NextResponse.json({ 
       success: false,
