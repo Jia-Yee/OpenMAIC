@@ -27,14 +27,26 @@ export function extractMediaFromClassroom(data: {
     for (const element of elements) {
       if (element.type === 'image') {
         const imgElement = element as PPTImageElement;
-        if (imgElement.src && (imgElement.src.startsWith('data:') || isBlobUrl(imgElement.src))) {
-          const ext = getExtensionFromDataUrl(imgElement.src) || 'png';
-          mediaFiles.push({
-            id: element.id,
-            src: imgElement.src,
-            type: 'image',
-            filename: `${element.id}.${ext}`,
-          });
+        // 提取所有类型的图片 URL：data URL、Blob URL、外部 HTTP/HTTPS URL
+        if (imgElement.src) {
+          if (imgElement.src.startsWith('data:')) {
+            const ext = getExtensionFromDataUrl(imgElement.src) || 'png';
+            mediaFiles.push({
+              id: element.id,
+              src: imgElement.src,
+              type: 'image',
+              filename: `${element.id}.${ext}`,
+            });
+          } else if (imgElement.src.startsWith('http://') || imgElement.src.startsWith('https://')) {
+            const ext = getExtensionFromDataUrl(imgElement.src) || 'png';
+            mediaFiles.push({
+              id: element.id,
+              src: imgElement.src,
+              type: 'image',
+              filename: `${element.id}.${ext}`,
+            });
+            console.log(`[MediaExtractor] Extracting external image URL for element ${element.id}: ${imgElement.src.substring(0, 50)}...`);
+          }
         }
       } else if (element.type === 'video') {
         const videoElement = element as PPTVideoElement;
@@ -147,7 +159,9 @@ export function replaceMediaUrlsInClassroom(
     return elements.map((element) => {
       if (element.type === 'image') {
         const imgElement = element as PPTImageElement;
-        if (imgElement.src && (imgElement.src.startsWith('data:') || isBlobUrl(imgElement.src))) {
+        // 替换所有类型的图片 URL：data URL、Blob URL、外部 HTTP/HTTPS URL
+        if (imgElement.src && (imgElement.src.startsWith('data:') || 
+            imgElement.src.startsWith('http://') || imgElement.src.startsWith('https://'))) {
           const newSrc = mediaMap[element.id];
           if (newSrc) {
             return { ...imgElement, src: newSrc };
@@ -155,7 +169,9 @@ export function replaceMediaUrlsInClassroom(
         }
       } else if (element.type === 'video') {
         const videoElement = element as PPTVideoElement;
-        if (videoElement.src && (videoElement.src.startsWith('data:') || isBlobUrl(videoElement.src))) {
+        // 替换所有类型的视频 URL
+        if (videoElement.src && (videoElement.src.startsWith('data:') || 
+            videoElement.src.startsWith('http://') || videoElement.src.startsWith('https://'))) {
           const newSrc = mediaMap[element.id];
           if (newSrc) {
             return { ...videoElement, src: newSrc };
@@ -163,7 +179,9 @@ export function replaceMediaUrlsInClassroom(
         }
       } else if (element.type === 'audio') {
         const audioElement = element as PPTAudioElement;
-        if (audioElement.src && (audioElement.src.startsWith('data:') || isBlobUrl(audioElement.src))) {
+        // 替换所有类型的音频 URL
+        if (audioElement.src && (audioElement.src.startsWith('data:') || 
+            audioElement.src.startsWith('http://') || audioElement.src.startsWith('https://'))) {
           const newSrc = mediaMap[element.id];
           if (newSrc) {
             return { ...audioElement, src: newSrc };

@@ -74,8 +74,8 @@ function setSecurityHeaders(response: NextResponse, request: NextRequest): void 
   // Content-Security-Policy
   const cspDirectives: string[] = [
     `default-src 'self'`,
-    `script-src 'self' 'unsafe-inline' 'unsafe-eval'${isProduction && !isDev ? ' https://*.vercel-insights.com https://*.googletagmanager.com https://static.cloudflareinsights.com' : ''} https://cdn.jsdelivr.net`,
-    `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com https://cdn.jsdelivr.net`,
+    `script-src 'self' 'unsafe-inline' 'unsafe-eval'${isProduction && !isDev ? ' https://*.vercel-insights.com https://*.googletagmanager.com https://static.cloudflareinsights.com' : ''} https://cdn.jsdelivr.net data:`,
+    `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com https://cdn.jsdelivr.net data:`,
     `font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net data:`,
     `img-src 'self' data: blob: https://*.vercel-storage.com https://*.blob.core.windows.net http://open.maic.chat https://open.maic.chat http://www.viete.xyz https://www.viete.xyz http://viete.xyz https://viete.xyz`,
     `media-src 'self' data: blob: https://*.vercel-storage.com http://open.maic.chat https://open.maic.chat http://www.viete.xyz https://www.viete.xyz http://viete.xyz https://viete.xyz`,
