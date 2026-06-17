@@ -39,40 +39,126 @@ function resolveMediaUrls(scenes: any[], classroomId: string): any[] {
         return element;
       }
       
-      // data URL, external URL, or blob URL — need to find the actual file
-      // Use element.id if available (this is what was used during upload)
       let filename: string | null = null;
+      let ext: string | null = null;
       
-      // Priority: use element.id which matches the uploaded file name
-      if (element.id) {
-        filename = element.id.replace(/\.\w+$/, '');
-      }
-      // If no id, try to extract from src
-      else if (src.startsWith('http://') || src.startsWith('https://')) {
+      // Case 1: Try to extract filename and extension from src
+      if (src.startsWith('http://') || src.startsWith('https://')) {
+        // URL format: https://xxx/.../filename.ext
         try {
           const url = new URL(src);
           const pathname = url.pathname;
-          filename = pathname.split('/').pop()?.replace(/\.\w+$/, '') || null;
+          const fullFilename = pathname.split('/').pop();
+          if (fullFilename) {
+            const match = fullFilename.match(/(.+?)(?:\.(\w+))?$/);
+            if (match) {
+              filename = match[1];
+              if (match[2]) {
+                ext = match[2];
+              }
+            }
+          }
         } catch {}
-      } else if (src.includes('/')) {
-        filename = src.split('/').pop()?.replace(/\.\w+$/, '') || null;
-      } else {
-        filename = src.replace(/^data:[^;]+;base64,/, '').substring(0, 50) || element.id;
+      } else if (!src.startsWith('data:')) {
+        // Simple filename format: "filename" or "filename.ext"
+        const srcMatch = src.match(/^(.+?)(?:\.(\w+))?$/);
+        if (srcMatch) {
+          filename = srcMatch[1];
+          if (srcMatch[2]) {
+            ext = srcMatch[2];
+          }
+        }
       }
       
-      // Determine extension from mimeType or src
-      let ext = 'png';
-      if (element.mimeType) {
-        ext = element.mimeType.split('/')[1] || 'png';
-      } else if (src.match(/^data:image\/(\w+);base64,/)) {
-        ext = src.match(/^data:image\/(\w+);base64,/)![1];
-      } else if (src.match(/\.(\w+)$/)) {
-        ext = src.match(/\.(\w+)$/)![1];
+      // Case 2: If no filename, use element.id
+      if (!filename && element.id) {
+        const idMatch = element.id.match(/^(.+?)(?:\.(\w+))?$/);
+        if (idMatch) {
+          filename = idMatch[1];
+          if (!ext && idMatch[2]) {
+            ext = idMatch[2];
+          }
+        }
+      }
+      
+      // Case 3: Fallback
+      if (!filename) {
+        filename = src.replace(/^data:[^;]+;base64,/, '').substring(0, 50) || element.id || 'image';
+      }
+      
+      // Determine extension if not already found
+      if (!ext) {
+        if (element.mimeType) {
+          ext = element.mimeType.split('/')[1] || 'png';
+        } else if (src.match(/^data:image\/(\w+);base64,/)) {
+          ext = src.match(/^data:image\/(\w+);base64,/)![1];
+        } else {
+          ext = 'png';
+        }
       }
       
       return {
         ...element,
         src: `/api/classrooms/${classroomId}/file/media/${filename}.${ext}`,
+      };
+    };
+    
+    const fixAudioUrl = (action: any): any => {
+      if (action.type !== 'speech' || !action.audioUrl) {
+        return action;
+      }
+      
+      const audioUrl = action.audioUrl;
+      
+      // If already a relative API path, leave it
+      if (audioUrl.startsWith('/api/')) {
+        return action;
+      }
+      
+      let filename: string | null = null;
+      let ext = 'mp3';
+      
+      // Priority: use audioId or action.id
+      const audioId = action.audioId || action.id;
+      if (audioId) {
+        filename = audioId.replace(/\.\w+$/, '');
+      }
+      // Try to extract from URL
+      else if (audioUrl.startsWith('http://') || audioUrl.startsWith('https://')) {
+        try {
+          const url = new URL(audioUrl);
+          const pathname = url.pathname;
+          const fullFilename = pathname.split('/').pop();
+          if (fullFilename) {
+            const match = fullFilename.match(/(.+)\.(\w+)$/);
+            if (match) {
+              filename = match[1];
+              ext = match[2];
+            } else {
+              filename = fullFilename;
+            }
+          }
+        } catch {}
+      } else if (audioUrl.includes('/')) {
+        const fullFilename = audioUrl.split('/').pop();
+        if (fullFilename) {
+          const match = fullFilename.match(/(.+)\.(\w+)$/);
+          if (match) {
+            filename = match[1];
+            ext = match[2];
+          } else {
+            filename = fullFilename;
+          }
+        }
+      }
+      
+      if (!filename) {
+        filename = audioId || 'audio';
+      }
+      
+      return {
+        ...action,
+        audioUrl: `/api/classrooms/${classroomId}/file/media/${filename}.${ext}`,
       };
     };
     
@@ -91,6 +177,10 @@ function resolveMediaUrls(scenes: any[], classroomId: string): any[] {
         ...wb,
         elements: wb.elements?.map(fixImageSrc),
       }));
+    }
+    
+    if (newScene.actions) {
+      newScene.actions = newScene.actions.map(fixAudioUrl);
     }
     
     return newScene;
