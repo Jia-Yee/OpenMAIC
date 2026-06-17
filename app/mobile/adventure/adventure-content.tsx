@@ -392,12 +392,6 @@ export default function AdventureContent() {
       return;
     }
     
-    const islandIndex = islands.findIndex(i => i.id === island.id);
-    if (islandIndex === 0) {
-      setShowExternalCourse(true);
-      return;
-    }
-    
     if (island.classroomId) {
       router.push(`/mobile/classroom/${island.classroomId}?mode=adventure`);
     } else {
