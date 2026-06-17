@@ -36,6 +36,8 @@ interface Classroom {
   sceneCount: number;
   createdAt: string;
   updatedAt: string;
+  synced?: boolean;
+  localOnly?: boolean;
 }
 
 export default function CoursesPage() {
@@ -145,9 +147,48 @@ export default function CoursesPage() {
 
   const fetchClassrooms = async () => {
     try {
-      const res = await fetch('/api/admin/classrooms');
-      const data = await res.json();
-      setClassrooms(data.classrooms || []);
+      const [serverRes, localStages] = await Promise.all([
+        fetch('/api/admin/classrooms'),
+        db.stages.orderBy('updatedAt').reverse().toArray(),
+      ]);
+      
+      const serverData = await serverRes.json();
+      const serverClassrooms: Classroom[] = serverData.classrooms || [];
+      const serverIds = new Set(serverClassrooms.map(c => c.id));
+      
+      const localClassrooms: Classroom[] = localStages.map(stage => ({
+        id: stage.id,
+        name: stage.name,
+        description: stage.description || '',
+        sceneCount: 0,
+        createdAt: new Date(stage.createdAt).toISOString(),
+        updatedAt: new Date(stage.updatedAt).toISOString(),
+        synced: serverIds.has(stage.id),
+        localOnly: !serverIds.has(stage.id),
+      }));
+      
+      const mergedClassrooms: Classroom[] = [];
+      const seenIds = new Set();
+      
+      for (const serverClassroom of serverClassrooms) {
+        seenIds.add(serverClassroom.id);
+        const localMatch = localClassrooms.find(c => c.id === serverClassroom.id);
+        mergedClassrooms.push({
+          ...serverClassroom,
+          synced: true,
+          localOnly: false,
+          ...localMatch,
+        });
+      }
+      
+      for (const localClassroom of localClassrooms) {
+        if (!seenIds.has(localClassroom.id)) {
+          mergedClassrooms.push(localClassroom);
+        }
+      }
+      
+      mergedClassrooms.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+      setClassrooms(mergedClassrooms);
     } catch (error) {
       console.error('Error fetching classrooms:', error);
     }
@@ -204,16 +245,14 @@ export default function CoursesPage() {
     try {
       setSyncing(true);
       const stages = await db.stages.orderBy('updatedAt').reverse().toArray();
-      let syncedCount = 0;
-      let failedCount = 0;
+      console.log(`[Sync] Found ${stages.length} stages to sync`);
 
-      for (const stage of stages) {
+      const syncPromises = stages.map(async (stage) => {
         try {
           const sceneRecords = await db.scenes.where('stageId').equals(stage.id).sortBy('order');
           const audioRecords = await db.audioFiles.toArray();
           const mediaRecords = await db.mediaFiles.where('stageId').equals(stage.id).toArray();
 
-          // Build manifest.json with audioRef
           const manifest: {
             stage: typeof stage;
             scenes: typeof sceneRecords;
@@ -224,7 +263,6 @@ export default function CoursesPage() {
             mediaIndex: {},
           };
 
-          // Collect audio files
           const audioFilesForUpload: { path: string; content: ArrayBuffer; mimeType: string }[] = [];
           for (const scene of sceneRecords) {
             if (!scene.actions) continue;
@@ -250,7 +288,6 @@ export default function CoursesPage() {
             }
           }
 
-          // Collect media files
           const mediaFilesForUpload: { path: string; content: ArrayBuffer; mimeType: string }[] = [];
           for (const mediaRecord of mediaRecords) {
             if (mediaRecord.blob && !mediaRecord.error) {
@@ -272,7 +309,6 @@ export default function CoursesPage() {
             }
           }
 
-          // Build files list with manifest
           const filesForUpload: { path: string; content: string | ArrayBuffer; mimeType: string }[] = [
             {
               path: 'manifest.json',
@@ -283,7 +319,6 @@ export default function CoursesPage() {
             ...mediaFilesForUpload,
           ];
 
-          // Convert ArrayBuffer to base64 for JSON transport
           const filesForJson = filesForUpload.map((f) => {
             if (f.content instanceof ArrayBuffer) {
               const bytes = new Uint8Array(f.content);
@@ -306,7 +341,6 @@ export default function CoursesPage() {
 
           console.log(`[Sync] Uploading classroom ${stage.id}: ${audioFilesForUpload.length} audio, ${mediaFilesForUpload.length} media`);
 
-          // Use folder upload API
           const res = await fetch(`/api/classrooms/${stage.id}/folder`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -321,26 +355,199 @@ export default function CoursesPage() {
 
           const result = await res.json();
           if (result.success) {
+            console.log(`[Sync] Successfully synced classroom ${stage.id}`);
+            return { success: true, id: stage.id };
+          } else {
+            console.error(`[Sync] Failed to sync classroom ${stage.id}:`, result.error);
+            return { success: false, id: stage.id, error: result.error };
+          }
+        } catch (error) {
+          console.error(`[Sync] Error syncing classroom ${stage.id}:`, error);
+          return { success: false, id: stage.id, error: error instanceof Error ? error.message : 'Unknown error' };
+        }
+      });
+
+      const results = await Promise.allSettled(syncPromises);
+      
+      let syncedCount = 0;
+      let failedCount = 0;
+      const failedIds: string[] = [];
+      
+      for (const result of results) {
+        if (result.status === 'fulfilled') {
+          if (result.value.success) {
             syncedCount++;
           } else {
             failedCount++;
-            console.error(`Failed to sync classroom ${stage.id}:`, result.error);
+            failedIds.push(result.value.id);
           }
-        } catch (error) {
+        } else {
           failedCount++;
-          console.error(`Failed to sync classroom ${stage.id}:`, error);
         }
       }
 
       if (failedCount === 0) {
         alert(`已成功同步 ${syncedCount} 个课堂到服务器！`);
       } else {
-        alert(`同步完成：成功 ${syncedCount} 个，失败 ${failedCount} 个`);
+        alert(`同步完成：成功 ${syncedCount} 个，失败 ${failedCount} 个\n失败的课堂ID：${failedIds.join(', ')}`);
       }
       fetchClassrooms();
     } catch (error) {
       console.error('Error syncing classrooms:', error);
       alert('同步失败');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleSyncSingleClassroom = async (classroomId: string) => {
+    try {
+      setSyncing(true);
+      const stage = await db.stages.get(classroomId);
+      if (!stage) {
+        alert('课堂不存在');
+        return;
+      }
+
+      const sceneRecords = await db.scenes.where('stageId').equals(stage.id).sortBy('order');
+      const audioRecords = await db.audioFiles.toArray();
+      const mediaRecords = await db.mediaFiles.where('stageId').equals(stage.id).toArray();
+
+      const manifest: {
+        stage: typeof stage;
+        scenes: typeof sceneRecords;
+        mediaIndex: Record<string, { type: string; format?: string; mimeType?: string; missing: boolean }>;
+      } = {
+        stage,
+        scenes: sceneRecords,
+        mediaIndex: {},
+      };
+
+      const audioFilesForUpload: { path: string; content: ArrayBuffer; mimeType: string }[] = [];
+      for (const scene of sceneRecords) {
+        if (!scene.actions) continue;
+        for (const action of scene.actions) {
+          if (action.type === 'speech') {
+            const audioId = (action as any).audioId || action.id;
+            if (audioId) {
+              const audioRecord = audioRecords.find(r => r.id === audioId);
+              if (audioRecord && audioRecord.blob) {
+                const arrayBuffer = await audioRecord.blob.arrayBuffer();
+                const format = audioRecord.format || 'mp3';
+                const audioPath = `audio/${audioId}.${format}`;
+                audioFilesForUpload.push({
+                  path: audioPath,
+                  content: arrayBuffer,
+                  mimeType: `audio/${format}`,
+                });
+                manifest.mediaIndex[audioPath] = { type: 'audio', format, missing: false };
+                (action as any).audioRef = audioPath;
+              }
+            }
+          }
+        }
+      }
+
+      const mediaFilesForUpload: { path: string; content: ArrayBuffer; mimeType: string }[] = [];
+      for (const mediaRecord of mediaRecords) {
+        if (mediaRecord.blob && !mediaRecord.error) {
+          const elementId = mediaRecord.id.includes(':')
+            ? mediaRecord.id.split(':').slice(1).join(':')
+            : mediaRecord.id;
+          const ext = mediaRecord.mimeType.split('/')[1] || 'png';
+          const mediaPath = `media/${elementId}.${ext}`;
+          mediaFilesForUpload.push({
+            path: mediaPath,
+            content: await mediaRecord.blob.arrayBuffer(),
+            mimeType: mediaRecord.mimeType,
+          });
+          manifest.mediaIndex[mediaPath] = {
+            type: mediaRecord.type,
+            mimeType: mediaRecord.mimeType,
+            missing: false,
+          };
+        }
+      }
+
+      const filesForUpload: { path: string; content: string | ArrayBuffer; mimeType: string }[] = [
+        {
+          path: 'manifest.json',
+          content: JSON.stringify(manifest),
+          mimeType: 'application/json',
+        },
+        ...audioFilesForUpload,
+        ...mediaFilesForUpload,
+      ];
+
+      const filesForJson = filesForUpload.map((f) => {
+        if (f.content instanceof ArrayBuffer) {
+          const bytes = new Uint8Array(f.content);
+          let binary = '';
+          for (let i = 0; i < bytes.byteLength; i++) {
+            binary += String.fromCharCode(bytes[i]);
+          }
+          return {
+            path: f.path,
+            mimeType: f.mimeType,
+            contentBase64: btoa(binary),
+          };
+        }
+        return {
+          path: f.path,
+          mimeType: f.mimeType,
+          content: f.content,
+        };
+      });
+
+      console.log(`[Sync] Uploading classroom ${stage.id}: ${audioFilesForUpload.length} audio, ${mediaFilesForUpload.length} media`);
+
+      const res = await fetch(`/api/classrooms/${stage.id}/folder`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: stage.id,
+          name: stage.name,
+          description: stage.description || '',
+          sceneCount: sceneRecords.length,
+          files: filesForJson,
+        }),
+      });
+
+      const result = await res.json();
+      if (result.success) {
+        alert(`课堂 ${stage.name} 同步成功！`);
+      } else {
+        alert(`同步失败：${result.error || '未知错误'}`);
+      }
+      fetchClassrooms();
+    } catch (error) {
+      console.error('Error syncing classroom:', error);
+      alert('同步失败');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleDeleteClassroom = async (classroomId: string) => {
+    if (!confirm('确定要删除这个课堂吗？')) {
+      return;
+    }
+
+    try {
+      setSyncing(true);
+      
+      await Promise.all([
+        db.stages.delete(classroomId),
+        db.scenes.where('stageId').equals(classroomId).delete(),
+        db.mediaFiles.where('stageId').equals(classroomId).delete(),
+        fetch(`/api/classrooms/${classroomId}`, { method: 'DELETE' }),
+      ]);
+      
+      alert('课堂已删除');
+      fetchClassrooms();
+    } catch (error) {
+      console.error('Error deleting classroom:', error);
+      alert('删除失败');
     } finally {
       setSyncing(false);
     }
@@ -937,7 +1144,7 @@ export default function CoursesPage() {
                   <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">课堂信息</th>
                   <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">场景数</th>
                   <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">更新时间</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">已关联</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">状态</th>
                   <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600">操作</th>
                 </tr>
               </thead>
@@ -959,15 +1166,26 @@ export default function CoursesPage() {
                         {new Date(classroom.updatedAt).toLocaleString('zh-CN')}
                       </td>
                       <td className="px-6 py-4">
-                        <span
-                          className={`px-2 py-1 rounded-full text-xs font-medium ${
-                            isLinked
-                              ? 'bg-green-100 text-green-700'
-                              : 'bg-gray-100 text-gray-600'
-                          }`}
-                        >
-                          {isLinked ? '已关联' : '未关联'}
-                        </span>
+                        <div className="flex flex-wrap gap-2">
+                          <span
+                            className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              isLinked
+                                ? 'bg-green-100 text-green-700'
+                                : 'bg-gray-100 text-gray-600'
+                            }`}
+                          >
+                            {isLinked ? '已关联' : '未关联'}
+                          </span>
+                          <span
+                            className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              classroom.localOnly
+                                ? 'bg-orange-100 text-orange-700'
+                                : 'bg-blue-100 text-blue-700'
+                            }`}
+                          >
+                            {classroom.localOnly ? '本地' : '已上传'}
+                          </span>
+                        </div>
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex gap-2">
@@ -979,11 +1197,27 @@ export default function CoursesPage() {
                           >
                             查看
                           </a>
+                          {classroom.localOnly && (
+                            <button
+                              onClick={() => handleSyncSingleClassroom(classroom.id)}
+                              disabled={syncing}
+                              className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition text-sm disabled:opacity-50"
+                            >
+                              {syncing ? '同步中...' : '上传'}
+                            </button>
+                          )}
                           <button
                             onClick={() => handleCreateCourseFromClassroom(classroom)}
                             className="px-3 py-1 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition text-sm"
                           >
                             创建课程
+                          </button>
+                          <button
+                            onClick={() => handleDeleteClassroom(classroom.id)}
+                            disabled={syncing}
+                            className="px-3 py-1 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition text-sm disabled:opacity-50"
+                          >
+                            删除
                           </button>
                         </div>
                       </td>

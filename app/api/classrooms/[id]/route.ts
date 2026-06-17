@@ -287,3 +287,36 @@ export async function GET(
     }, { status: 500 });
   }
 }
+
+export async function DELETE(
+  _request: Request,
+  context: { params: Promise<{ id: string }> }
+) {
+  try {
+    const params = await context.params;
+    const classroomId = params.id;
+    
+    console.log('[ClassroomsAPI] Deleting classroom:', classroomId);
+    
+    const pgDb = await ensureDb();
+    
+    await pgDb.delete(classrooms)
+      .where(eq(classrooms.id, classroomId));
+    
+    const { deleteClassroomData } = await import('@/lib/server/blob-storage');
+    await deleteClassroomData(classroomId);
+    
+    console.log('[ClassroomsAPI] Classroom deleted:', classroomId);
+    
+    return NextResponse.json({ 
+      success: true,
+      message: `Classroom "${classroomId}" deleted successfully`
+    });
+  } catch (error) {
+    console.error('[ClassroomsAPI] Error deleting classroom:', error);
+    return NextResponse.json({ 
+      success: false,
+      error: 'Internal server error'
+    }, { status: 500 });
+  }
+}
