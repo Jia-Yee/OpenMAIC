@@ -11,8 +11,74 @@ export async function POST(
     const params = await context.params;
     const classroomId = params.id;
     
-    const body = await request.json();
-    const { files, name, description, sceneCount } = body;
+    let files: any[] = [];
+    let name: string = '';
+    let description: string = '';
+    let sceneCount: number = 0;
+
+    const contentType = request.headers.get('content-type') || '';
+    
+    if (contentType.includes('multipart/form-data')) {
+      const formData = await request.formData();
+      
+      name = formData.get('name') as string || '';
+      description = formData.get('description') as string || '';
+      sceneCount = parseInt(formData.get('sceneCount') as string || '0');
+      
+      const manifestEntry = formData.get('manifest');
+      if (manifestEntry) {
+        const manifestText = typeof manifestEntry === 'string' 
+          ? manifestEntry 
+          : await manifestEntry.text();
+        files.push({
+          path: 'manifest.json',
+          mimeType: 'application/json',
+          content: manifestText,
+        });
+      }
+      
+      const fileEntries = formData.getAll('files');
+      for (const entry of fileEntries) {
+        if (entry instanceof File) {
+          const arrayBuffer = await entry.arrayBuffer();
+          files.push({
+            path: entry.name,
+            mimeType: entry.type,
+            content: arrayBuffer,
+          });
+        }
+      }
+    } else {
+      const body = await request.json();
+      ({ files, name, description, sceneCount } = body);
+      
+      if (!files || !Array.isArray(files)) {
+        return NextResponse.json({
+          success: false,
+          error: 'Files array is required',
+        }, { status: 400 });
+      }
+
+      files = files.map((f: any) => {
+        if (f.contentBase64) {
+          const binary = atob(f.contentBase64);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) {
+            bytes[i] = binary.charCodeAt(i);
+          }
+          return {
+            path: f.path,
+            mimeType: f.mimeType,
+            content: bytes.buffer,
+          };
+        }
+        return {
+          path: f.path,
+          mimeType: f.mimeType,
+          content: f.content,
+        };
+      });
+    }
 
     if (!classroomId) {
       return NextResponse.json({
@@ -21,39 +87,11 @@ export async function POST(
       }, { status: 400 });
     }
 
-    if (!files || !Array.isArray(files)) {
-      return NextResponse.json({
-        success: false,
-        error: 'Files array is required',
-      }, { status: 400 });
-    }
-
-    // Decode base64 content to ArrayBuffer
-    const decodedFiles = files.map((f: any) => {
-      if (f.contentBase64) {
-        const binary = atob(f.contentBase64);
-        const bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) {
-          bytes[i] = binary.charCodeAt(i);
-        }
-        return {
-          path: f.path,
-          mimeType: f.mimeType,
-          content: bytes.buffer,
-        };
-      }
-      return {
-        path: f.path,
-        mimeType: f.mimeType,
-        content: f.content,
-      };
-    });
-
-    console.log(`[FolderUpload] Starting upload for classroom: ${classroomId}, files: ${decodedFiles.length}`);
+    console.log(`[FolderUpload] Starting upload for classroom: ${classroomId}, files: ${files.length}`);
 
     // Find and parse manifest.json
-    const manifestFile = decodedFiles.find((f: any) => f.path === 'manifest.json');
-    let processedFiles = decodedFiles;
+    const manifestFile = files.find((f: any) => f.path === 'manifest.json');
+    let processedFiles = files;
     
     if (manifestFile) {
       try {
@@ -68,7 +106,7 @@ export async function POST(
         const result = await processClassroomMedia(classroomId, manifestData);
         
         // Replace manifest content with processed data
-        const newManifestFile = decodedFiles.map((f: any) => {
+        const newManifestFile = files.map((f: any) => {
           if (f.path === 'manifest.json') {
             return {
               path: 'manifest.json',

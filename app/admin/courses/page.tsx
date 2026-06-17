@@ -341,7 +341,47 @@ export default function CoursesPage() {
 
           console.log(`[Sync] Uploading classroom ${stage.id}: ${audioFilesForUpload.length} audio, ${mediaFilesForUpload.length} media`);
 
-          const res = await fetch(`/api/classrooms/${stage.id}/folder`, {
+          const manifestBlob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
+          const manifestFormData = new FormData();
+          manifestFormData.append('fileName', 'manifest.json');
+          manifestFormData.append('content', manifestBlob, 'manifest.json');
+          
+          const manifestRes = await fetch(`/api/classrooms/${stage.id}/chunk`, {
+            method: 'POST',
+            body: manifestFormData,
+          });
+          
+          const manifestResult = await manifestRes.json();
+          if (!manifestResult.success) {
+            console.error(`[Sync] Failed to upload manifest for ${stage.id}:`, manifestResult.error);
+            return { success: false, id: stage.id, error: manifestResult.error };
+          }
+          
+          for (const audioFile of audioFilesForUpload) {
+            const audioBlob = new Blob([audioFile.content], { type: audioFile.mimeType });
+            const audioFormData = new FormData();
+            audioFormData.append('fileName', audioFile.path);
+            audioFormData.append('content', audioBlob, audioFile.path);
+            
+            await fetch(`/api/classrooms/${stage.id}/chunk`, {
+              method: 'POST',
+              body: audioFormData,
+            });
+          }
+          
+          for (const mediaFile of mediaFilesForUpload) {
+            const mediaBlob = new Blob([mediaFile.content], { type: mediaFile.mimeType });
+            const mediaFormData = new FormData();
+            mediaFormData.append('fileName', mediaFile.path);
+            mediaFormData.append('content', mediaBlob, mediaFile.path);
+            
+            await fetch(`/api/classrooms/${stage.id}/chunk`, {
+              method: 'POST',
+              body: mediaFormData,
+            });
+          }
+          
+          await fetch('/api/admin/classrooms', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -349,18 +389,11 @@ export default function CoursesPage() {
               name: stage.name,
               description: stage.description || '',
               sceneCount: sceneRecords.length,
-              files: filesForJson,
             }),
           });
-
-          const result = await res.json();
-          if (result.success) {
-            console.log(`[Sync] Successfully synced classroom ${stage.id}`);
-            return { success: true, id: stage.id };
-          } else {
-            console.error(`[Sync] Failed to sync classroom ${stage.id}:`, result.error);
-            return { success: false, id: stage.id, error: result.error };
-          }
+          
+          console.log(`[Sync] Successfully synced classroom ${stage.id}`);
+          return { success: true, id: stage.id };
         } catch (error) {
           console.error(`[Sync] Error syncing classroom ${stage.id}:`, error);
           return { success: false, id: stage.id, error: error instanceof Error ? error.message : 'Unknown error' };
@@ -501,7 +534,64 @@ export default function CoursesPage() {
 
       console.log(`[Sync] Uploading classroom ${stage.id}: ${audioFilesForUpload.length} audio, ${mediaFilesForUpload.length} media`);
 
-      const res = await fetch(`/api/classrooms/${stage.id}/folder`, {
+      const manifestBlob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
+      
+      const manifestFormData = new FormData();
+      manifestFormData.append('fileName', 'manifest.json');
+      manifestFormData.append('content', manifestBlob, 'manifest.json');
+      
+      const manifestRes = await fetch(`/api/classrooms/${stage.id}/chunk`, {
+        method: 'POST',
+        body: manifestFormData,
+      });
+      
+      const manifestResult = await manifestRes.json();
+      if (!manifestResult.success) {
+        alert(`上传 manifest 失败：${manifestResult.error || '未知错误'}`);
+        return;
+      }
+      
+      console.log(`[Sync] Manifest uploaded successfully`);
+      
+      for (const audioFile of audioFilesForUpload) {
+        const audioBlob = new Blob([audioFile.content], { type: audioFile.mimeType });
+        const audioFormData = new FormData();
+        audioFormData.append('fileName', audioFile.path);
+        audioFormData.append('content', audioBlob, audioFile.path);
+        
+        const audioRes = await fetch(`/api/classrooms/${stage.id}/chunk`, {
+          method: 'POST',
+          body: audioFormData,
+        });
+        
+        const audioResult = await audioRes.json();
+        if (!audioResult.success) {
+          console.error(`[Sync] Failed to upload audio ${audioFile.path}:`, audioResult.error);
+        }
+      }
+      
+      console.log(`[Sync] Uploaded ${audioFilesForUpload.length} audio files`);
+      
+      for (const mediaFile of mediaFilesForUpload) {
+        const mediaBlob = new Blob([mediaFile.content], { type: mediaFile.mimeType });
+        const mediaFormData = new FormData();
+        mediaFormData.append('fileName', mediaFile.path);
+        mediaFormData.append('content', mediaBlob, mediaFile.path);
+        
+        const mediaRes = await fetch(`/api/classrooms/${stage.id}/chunk`, {
+          method: 'POST',
+          body: mediaFormData,
+        });
+        
+        const mediaResult = await mediaRes.json();
+        if (!mediaResult.success) {
+          console.error(`[Sync] Failed to upload media ${mediaFile.path}:`, mediaResult.error);
+        }
+      }
+      
+      console.log(`[Sync] Uploaded ${mediaFilesForUpload.length} media files`);
+      
+      const classroomRes = await fetch('/api/admin/classrooms', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -509,16 +599,15 @@ export default function CoursesPage() {
           name: stage.name,
           description: stage.description || '',
           sceneCount: sceneRecords.length,
-          files: filesForJson,
         }),
       });
-
-      const result = await res.json();
-      if (result.success) {
-        alert(`课堂 ${stage.name} 同步成功！`);
-      } else {
-        alert(`同步失败：${result.error || '未知错误'}`);
+      
+      const classroomResult = await classroomRes.json();
+      if (!classroomResult.success) {
+        console.error(`[Sync] Failed to save classroom to database:`, classroomResult.error);
       }
+      
+      alert(`课堂 ${stage.name} 同步成功！`);
       fetchClassrooms();
     } catch (error) {
       console.error('Error syncing classroom:', error);

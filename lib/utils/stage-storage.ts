@@ -96,16 +96,20 @@ async function syncStageToServer(stageId: string, data: StageStoreData): Promise
       };
     });
 
+    const formData = new FormData();
+    formData.append('id', stageId);
+    formData.append('name', syncData.stage.name || '未命名课堂');
+    formData.append('description', syncData.stage.description || 'AI 生成的交互式课堂');
+    formData.append('sceneCount', syncData.scenes?.length?.toString() || '0');
+    formData.append('manifest', new Blob([JSON.stringify(manifest)], { type: 'application/json' }), 'manifest.json');
+
+    for (const audioFile of audioFilesForUpload) {
+      formData.append('files', new Blob([audioFile.content], { type: audioFile.mimeType }), audioFile.path);
+    }
+
     const response = await fetch(`/api/classrooms/${stageId}/folder`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id: stageId,
-        name: syncData.stage.name || '未命名课堂',
-        description: syncData.stage.description || 'AI 生成的交互式课堂',
-        sceneCount: syncData.scenes?.length || 0,
-        files: filesForJson,
-      }),
+      body: formData,
     });
 
     const result = await response.json();
