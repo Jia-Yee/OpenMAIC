@@ -25,6 +25,24 @@ async function getBlobModule(): Promise<{ put: any; get: any; del: any; list: an
   }
 }
 
+function isR2Available(): boolean {
+  return !!(
+    process.env.R2_ACCOUNT_ID &&
+    process.env.R2_ACCESS_KEY_ID &&
+    process.env.R2_SECRET_ACCESS_KEY &&
+    process.env.R2_BUCKET_NAME &&
+    process.env.R2_ENDPOINT
+  );
+}
+
+async function getR2Module(): Promise<any> {
+  if (isR2Available()) {
+    const r2 = await import('./r2-storage');
+    return r2;
+  }
+  return null;
+}
+
 function dataUrlToBlob(dataUrl: string): Blob {
   const parts = dataUrl.split(',');
   const mimeMatch = parts[0].match(/:(.*?);/);
@@ -42,6 +60,11 @@ function dataUrlToBlob(dataUrl: string): Blob {
 }
 
 export async function uploadClassroomData(classroomId: string, data: any): Promise<string> {
+  const r2Module = await getR2Module();
+  if (r2Module) {
+    return await r2Module.uploadClassroomData(classroomId, data);
+  }
+
   const blobModule = await getBlobModule();
   const token = process.env.BLOB_READ_WRITE_TOKEN;
   
@@ -54,10 +77,15 @@ export async function uploadClassroomData(classroomId: string, data: any): Promi
     return url;
   }
 
-  throw new Error('@vercel/blob module not available. This feature requires deployment to Vercel.');
+  throw new Error('Storage not available. Either R2 or Vercel Blob must be configured.');
 }
 
 export async function getClassroomData(classroomId: string): Promise<any | null> {
+  const r2Module = await getR2Module();
+  if (r2Module) {
+    return await r2Module.getClassroomData(classroomId);
+  }
+
   const token = process.env.BLOB_READ_WRITE_TOKEN;
   const storeId = process.env.BLOB_STORE_ID;
   
@@ -88,6 +116,11 @@ export async function getClassroomData(classroomId: string): Promise<any | null>
 }
 
 export async function uploadMediaFile(classroomId: string, mediaId: string, dataUrlOrBlobUrl: string): Promise<string> {
+  const r2Module = await getR2Module();
+  if (r2Module) {
+    return await r2Module.uploadMediaFile(classroomId, mediaId, dataUrlOrBlobUrl);
+  }
+
   const blobModule = await getBlobModule();
   const token = process.env.BLOB_READ_WRITE_TOKEN;
   
@@ -137,10 +170,15 @@ export async function uploadMediaFile(classroomId: string, mediaId: string, data
     return url;
   }
 
-  throw new Error('@vercel/blob module not available. This feature requires deployment to Vercel.');
+  throw new Error('Storage not available. Either R2 or Vercel Blob must be configured.');
 }
 
 export async function getMediaFile(classroomId: string, mediaId: string): Promise<string | null> {
+  const r2Module = await getR2Module();
+  if (r2Module) {
+    return await r2Module.getMediaFile(classroomId, mediaId);
+  }
+
   const token = process.env.BLOB_READ_WRITE_TOKEN;
   const storeId = process.env.BLOB_STORE_ID;
   
@@ -169,6 +207,11 @@ export async function getMediaFile(classroomId: string, mediaId: string): Promis
 }
 
 export async function listClassroomMedia(classroomId: string): Promise<string[]> {
+  const r2Module = await getR2Module();
+  if (r2Module) {
+    return await r2Module.listClassroomMedia(classroomId);
+  }
+
   const blobModule = await getBlobModule();
   const token = process.env.BLOB_READ_WRITE_TOKEN;
   
@@ -186,6 +229,11 @@ export async function listClassroomMedia(classroomId: string): Promise<string[]>
 }
 
 export async function deleteClassroomData(classroomId: string): Promise<void> {
+  const r2Module = await getR2Module();
+  if (r2Module) {
+    return await r2Module.deleteClassroomData(classroomId);
+  }
+
   const blobModule = await getBlobModule();
   const token = process.env.BLOB_READ_WRITE_TOKEN;
   
@@ -204,6 +252,11 @@ export async function deleteClassroomData(classroomId: string): Promise<void> {
 }
 
 export async function listClassroomFiles(): Promise<string[]> {
+  const r2Module = await getR2Module();
+  if (r2Module) {
+    return await r2Module.listClassroomFiles();
+  }
+
   const blobModule = await getBlobModule();
   const token = process.env.BLOB_READ_WRITE_TOKEN;
   
@@ -222,7 +275,7 @@ export async function listClassroomFiles(): Promise<string[]> {
 
 export interface ClassroomFileEntry {
   path: string;
-  content: string | ArrayBuffer;
+  content: string | ArrayBuffer | Buffer;
   mimeType: string;
 }
 
@@ -230,30 +283,16 @@ export async function uploadClassroomFolder(
   classroomId: string,
   files: ClassroomFileEntry[]
 ): Promise<string[]> {
+  const r2Module = await getR2Module();
+  if (r2Module) {
+    return await r2Module.uploadClassroomFolder(classroomId, files);
+  }
+
   const blobModule = await getBlobModule();
   const token = process.env.BLOB_READ_WRITE_TOKEN;
   
   if (!blobModule || !token) {
-    throw new Error('@vercel/blob module not available. This feature requires deployment to Vercel.');
-  }
-
-  console.log(`[BlobStorage] Cleaning up old files for classroom: ${classroomId}`);
-  try {
-    const { blobs: existingBlobs } = await blobModule.list({
-      prefix: `classrooms/${classroomId}/`,
-      token: token,
-    });
-    if (existingBlobs && existingBlobs.length > 0) {
-      const oldUrls = existingBlobs
-        .filter((b: any) => b.url)
-        .map((b: any) => b.url);
-      if (oldUrls.length > 0) {
-        await blobModule.del(oldUrls, { token: token });
-        console.log(`[BlobStorage] Deleted ${oldUrls.length} old files`);
-      }
-    }
-  } catch (cleanupError) {
-    console.warn(`[BlobStorage] Cleanup error (non-fatal):`, cleanupError);
+    throw new Error('Storage not available. Either R2 or Vercel Blob must be configured.');
   }
 
   const uploadedUrls: string[] = [];
@@ -281,6 +320,11 @@ export async function uploadClassroomFolder(
       token: token,
       allowOverwrite: true,
       addRandomSuffix: false,
+    }).catch((putError: any) => {
+      if (putError?.message?.includes('suspended')) {
+        throw new Error(`Vercel Blob storage is suspended. Please check your Vercel dashboard (https://vercel.com/dashboard/storage) to resume the Blob storage service. Error: ${putError.message}`);
+      }
+      throw putError;
     });
     
     uploadedUrls.push(url);
@@ -295,6 +339,11 @@ export async function getClassroomFile(
   classroomId: string,
   filePath: string
 ): Promise<{ blob: Blob; mimeType: string } | null> {
+  const r2Module = await getR2Module();
+  if (r2Module) {
+    return await r2Module.getClassroomFile(classroomId, filePath);
+  }
+
   const blobModule = await getBlobModule();
   const token = process.env.BLOB_READ_WRITE_TOKEN;
   
@@ -344,6 +393,11 @@ export async function getClassroomFile(
 }
 
 export async function listClassroomFolder(classroomId: string): Promise<string[]> {
+  const r2Module = await getR2Module();
+  if (r2Module) {
+    return await r2Module.listClassroomFolder(classroomId);
+  }
+
   const blobModule = await getBlobModule();
   const token = process.env.BLOB_READ_WRITE_TOKEN;
   

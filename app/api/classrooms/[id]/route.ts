@@ -16,6 +16,11 @@ function resolveMediaUrls(scenes: any[], classroomId: string): any[] {
               ...action,
               audioUrl: `/api/classrooms/${classroomId}/file/${action.audioRef}`,
             };
+          } else if (action.audioId) {
+            return {
+              ...action,
+              audioUrl: `/api/classrooms/${classroomId}/file/audio/${action.audioId}.mp3`,
+            };
           }
         }
         return action;

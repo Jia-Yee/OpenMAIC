@@ -110,7 +110,6 @@ export async function getClassroomFromServer(id: string): Promise<PersistedClass
 
   const row = result[0];
   
-  // 从 Blob 获取完整数据
   let data = null;
   if (row.dataUrl) {
     data = await getClassroomData(id);
