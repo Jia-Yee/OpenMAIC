@@ -10,18 +10,12 @@ export async function GET(
     const classroomId = params.id;
     const filePath = params.path.join('/');
 
-    if (!classroomId || !filePath) {
-      return NextResponse.json({
-        success: false,
-        error: 'Classroom ID and file path are required',
-      }, { status: 400 });
-    }
-
-    console.log(`[FileDownload] Downloading file: ${classroomId}/${filePath}`);
+    console.log('[ClassroomFileAPI] Fetching file:', classroomId, filePath);
 
     const result = await getClassroomFile(classroomId, filePath);
 
     if (!result) {
+      console.log('[ClassroomFileAPI] File not found:', classroomId, filePath);
       return NextResponse.json({
         success: false,
         error: 'File not found',
@@ -29,20 +23,22 @@ export async function GET(
     }
 
     const { blob, mimeType } = result;
-    const buffer = await blob.arrayBuffer();
+    
+    console.log('[ClassroomFileAPI] Found file:', filePath, 'size:', blob.size, 'mimeType:', mimeType);
 
-    return new NextResponse(buffer, {
+    const arrayBuffer = await blob.arrayBuffer();
+    
+    return new NextResponse(arrayBuffer, {
       headers: {
         'Content-Type': mimeType,
-        'Content-Length': String(buffer.byteLength),
+        'Cache-Control': 'public, max-age=31536000',
       },
     });
   } catch (error) {
-    console.error('[FileDownload] Error downloading file:', error);
+    console.error('[ClassroomFileAPI] Failed to fetch file:', error);
     return NextResponse.json({
       success: false,
-      error: 'Failed to download file',
-      message: error instanceof Error ? error.message : 'Unknown error',
+      error: 'Failed to fetch file',
     }, { status: 500 });
   }
 }

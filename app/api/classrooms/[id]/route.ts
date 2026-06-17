@@ -40,26 +40,23 @@ function resolveMediaUrls(scenes: any[], classroomId: string): any[] {
       }
       
       // data URL, external URL, or blob URL — need to find the actual file
-      // src typically contains the file reference like "gen_img_3CHhsR4q" or original filename
-      // Try to extract the filename from src if it looks like a path
+      // Use element.id if available (this is what was used during upload)
       let filename: string | null = null;
       
-      // If src is a full URL, extract path
-      if (src.startsWith('http://') || src.startsWith('https://')) {
+      // Priority: use element.id which matches the uploaded file name
+      if (element.id) {
+        filename = element.id.replace(/\.\w+$/, '');
+      }
+      // If no id, try to extract from src
+      else if (src.startsWith('http://') || src.startsWith('https://')) {
         try {
           const url = new URL(src);
           const pathname = url.pathname;
           filename = pathname.split('/').pop()?.replace(/\.\w+$/, '') || null;
         } catch {}
-      }
-      
-      // If src contains a path-like pattern, use last segment
-      if (!filename && src.includes('/')) {
+      } else if (src.includes('/')) {
         filename = src.split('/').pop()?.replace(/\.\w+$/, '') || null;
-      }
-      
-      // Otherwise use src directly as filename
-      if (!filename) {
+      } else {
         filename = src.replace(/^data:[^;]+;base64,/, '').substring(0, 50) || element.id;
       }
       
