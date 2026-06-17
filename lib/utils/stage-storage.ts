@@ -20,18 +20,91 @@ const log = createLogger('StageStorage');
  */
 async function syncStageToServer(stageId: string, data: StageStoreData): Promise<void> {
   try {
-    const response = await fetch('/api/classrooms/sync', {
+    // Deep copy the data to avoid modifying original
+    const syncData = JSON.parse(JSON.stringify(data));
+    
+    // Build manifest with audio URLs
+    const manifest: {
+      stage: any;
+      scenes: any[];
+      mediaIndex: Record<string, { type: string; mimeType: string; missing: boolean }>;
+    } = {
+      stage: syncData.stage,
+      scenes: syncData.scenes,
+      mediaIndex: {},
+    };
+    
+    // Prepare audio files for upload
+    const audioFilesForUpload: { path: string; content: ArrayBuffer; mimeType: string }[] = [];
+    
+    for (const scene of syncData.scenes) {
+      if (scene.actions) {
+        for (const action of scene.actions) {
+          if (action.type === 'speech' && action.audioId) {
+            try {
+              const audioFile = await db.audioFiles.get(action.audioId);
+              if (audioFile && audioFile.blob) {
+                const arrayBuffer = await audioFile.blob.arrayBuffer();
+                const audioPath = `media/${action.audioId}.${audioFile.format || 'mp3'}`;
+                audioFilesForUpload.push({
+                  path: audioPath,
+                  content: arrayBuffer,
+                  mimeType: `audio/${audioFile.format || 'mp3'}`,
+                });
+                manifest.mediaIndex[audioPath] = {
+                  type: 'audio',
+                  mimeType: `audio/${audioFile.format || 'mp3'}`,
+                  missing: false,
+                };
+              }
+            } catch (error) {
+              log.warn(`Failed to load audio for action ${action.audioId}:`, error);
+            }
+          }
+        }
+      }
+    }
+    
+    // Build files list with manifest
+    const filesForUpload: { path: string; content: string | ArrayBuffer; mimeType: string }[] = [
+      {
+        path: 'manifest.json',
+        content: JSON.stringify(manifest),
+        mimeType: 'application/json',
+      },
+      ...audioFilesForUpload,
+    ];
+    
+    // Convert ArrayBuffer to base64 for JSON transport
+    const filesForJson = filesForUpload.map((f) => {
+      if (f.content instanceof ArrayBuffer) {
+        const bytes = new Uint8Array(f.content);
+        let binary = '';
+        for (let i = 0; i < bytes.byteLength; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        return {
+          path: f.path,
+          mimeType: f.mimeType,
+          contentBase64: btoa(binary),
+        };
+      }
+      return {
+        path: f.path,
+        mimeType: f.mimeType,
+        content: f.content,
+      };
+    });
+
+    const response = await fetch(`/api/classrooms/${stageId}/folder`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         id: stageId,
-        name: data.stage.name || '未命名课堂',
-        description: data.stage.description || 'AI 生成的交互式课堂',
-        sceneCount: data.scenes?.length || 0,
-        data: {
-          stage: data.stage,
-          scenes: data.scenes,
-        },
+        name: syncData.stage.name || '未命名课堂',
+        description: syncData.stage.description || 'AI 生成的交互式课堂',
+        sceneCount: syncData.scenes?.length || 0,
+        files: filesForJson,
       }),
     });
 
