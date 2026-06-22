@@ -32,6 +32,7 @@ export default function MobileClassroomPage() {
   const searchParams = useSearchParams();
   const classroomId = params.id as string;
   const mode = searchParams.get('mode') || 'learning';
+  const courseId = searchParams.get('courseId') || '';
 
   const [classroom, setClassroom] = useState<ClassroomData | null>(null);
   const [currentSceneIndex, setCurrentSceneIndex] = useState(0);
@@ -41,6 +42,7 @@ export default function MobileClassroomPage() {
   const [ttsEnabled, setTtsEnabled] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [completed, setCompleted] = useState(false);
 
   useEffect(() => {
     if (!validateClassroomId(classroomId)) {
@@ -155,8 +157,48 @@ export default function MobileClassroomPage() {
     if (currentSceneIndex < scenes.length - 1) {
       stop();
       setCurrentSceneIndex(prev => prev + 1);
+    } else {
+      handleCourseComplete();
     }
   }, [currentSceneIndex, scenes.length, stop]);
+
+  const handleCourseComplete = async () => {
+    if (completed || !courseId) return;
+    
+    console.log('[Page] Course completed, updating progress');
+    setCompleted(true);
+    
+    const token = localStorage.getItem('token');
+    if (!token) {
+      console.log('[Page] No token, skipping progress update');
+      return;
+    }
+    
+    try {
+      const response = await fetch('/api/user/progress', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          courseId,
+          progress: 100,
+          completed: true,
+          stars: 1,
+        }),
+      });
+      
+      const result = await response.json();
+      if (result.success) {
+        console.log('[Page] Progress updated successfully');
+      } else {
+        console.error('[Page] Failed to update progress:', result.error);
+      }
+    } catch (err) {
+      console.error('[Page] Error updating progress:', err);
+    }
+  };
 
   const handlePrevScene = useCallback(() => {
     if (currentSceneIndex > 0) {

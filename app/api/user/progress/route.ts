@@ -78,6 +78,31 @@ export async function GET(request: Request) {
 }
 
 /**
+ * Get client IP from request headers
+ */
+function getClientIp(request: Request): string | null {
+  // Try x-forwarded-for header (most common in proxy/CDN setups)
+  const forwardedFor = request.headers.get('x-forwarded-for');
+  if (forwardedFor) {
+    // x-forwarded-for may contain multiple IPs, the first one is the client
+    return forwardedFor.split(',')[0].trim();
+  }
+  
+  // Try other common headers
+  const realIp = request.headers.get('x-real-ip');
+  if (realIp) {
+    return realIp.trim();
+  }
+  
+  const cfConnectingIp = request.headers.get('cf-connecting-ip');
+  if (cfConnectingIp) {
+    return cfConnectingIp.trim();
+  }
+  
+  return null;
+}
+
+/**
  * PUT /api/user/progress
  * Update learning progress
  * 
@@ -107,6 +132,7 @@ export async function PUT(request: Request) {
     
     const body = await request.json();
     const { courseId, progress, completed, stars } = body;
+    const clientIp = getClientIp(request);
     
     if (!courseId || progress === undefined) {
       return NextResponse.json(
@@ -134,6 +160,7 @@ export async function PUT(request: Request) {
           progress: Math.min(100, Math.max(0, progress)),
           completed: completed !== undefined ? completed : existing[0].completed,
           stars: stars !== undefined ? Math.min(3, Math.max(0, stars)) : existing[0].stars,
+          lastAccessIp: clientIp,
           lastAccessAt: Math.floor(Date.now() / 1000),
           updatedAt: Math.floor(Date.now() / 1000),
         })
@@ -149,6 +176,7 @@ export async function PUT(request: Request) {
         progress: Math.min(100, Math.max(0, progress)),
         completed: completed ? 1 : 0,
         stars: stars || 0,
+        lastAccessIp: clientIp,
         lastAccessAt: Math.floor(Date.now() / 1000),
         createdAt: Math.floor(Date.now() / 1000),
         updatedAt: Math.floor(Date.now() / 1000),

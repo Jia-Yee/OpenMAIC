@@ -393,7 +393,7 @@ export default function AdventureContent() {
     }
     
     if (island.classroomId) {
-      router.push(`/mobile/classroom/${island.classroomId}?mode=adventure`);
+      router.push(`/mobile/classroom/${island.classroomId}?mode=adventure&courseId=${island.id}`);
     } else {
       console.warn('No classroom associated with course:', island.title);
     }
@@ -721,7 +721,7 @@ export default function AdventureContent() {
               {/* QR Code */}
               <div className="bg-white rounded-xl p-4 mb-4">
                 <img
-                  src="https://via.placeholder.com/200"
+                  src="/viete-learning.jpg"
                   alt="微信二维码"
                   className="w-full h-auto rounded-lg"
                 />

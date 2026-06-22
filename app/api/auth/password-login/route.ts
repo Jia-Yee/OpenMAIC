@@ -14,6 +14,31 @@ async function ensureDb() {
 }
 
 /**
+ * Get client IP from request headers
+ */
+function getClientIp(request: Request): string | null {
+  // Try x-forwarded-for header (most common in proxy/CDN setups)
+  const forwardedFor = request.headers.get('x-forwarded-for');
+  if (forwardedFor) {
+    // x-forwarded-for may contain multiple IPs, the first one is the client
+    return forwardedFor.split(',')[0].trim();
+  }
+  
+  // Try other common headers
+  const realIp = request.headers.get('x-real-ip');
+  if (realIp) {
+    return realIp.trim();
+  }
+  
+  const cfConnectingIp = request.headers.get('cf-connecting-ip');
+  if (cfConnectingIp) {
+    return cfConnectingIp.trim();
+  }
+  
+  return null;
+}
+
+/**
  * POST /api/auth/password-login
  * Password login with phone and password
  * Supports admin login as any user
@@ -23,6 +48,7 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const { phone, password, loginAsUserId } = body;
+    const clientIp = getClientIp(request);
 
     if (!phone || !password) {
       return NextResponse.json(
@@ -100,9 +126,12 @@ export async function POST(request: Request) {
       }
     }
 
-    // Update last login time
+    // Update last login time and IP
     await db.update(users)
-      .set({ lastLoginAt: Math.floor(Date.now() / 1000) })
+      .set({ 
+        lastLoginAt: Math.floor(Date.now() / 1000),
+        lastLoginIp: clientIp,
+      })
       .where(eq(users.id, loginUser.id));
 
     // Generate JWT

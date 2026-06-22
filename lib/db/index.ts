@@ -93,6 +93,8 @@ async function ensurePgTables(client: any) {
           phone TEXT,
           password TEXT,
           is_admin INTEGER DEFAULT 0,
+          register_ip TEXT,
+          last_login_ip TEXT,
           created_at INTEGER,
           updated_at INTEGER,
           last_login_at INTEGER
@@ -201,6 +203,7 @@ async function ensurePgTables(client: any) {
           progress INTEGER DEFAULT 0,
           completed INTEGER DEFAULT 0,
           stars INTEGER DEFAULT 0,
+          last_access_ip TEXT,
           last_access_at INTEGER,
           created_at INTEGER,
           updated_at INTEGER
@@ -296,6 +299,8 @@ async function ensurePgTablesVercel(sql: any) {
           phone TEXT,
           password TEXT,
           is_admin INTEGER DEFAULT 0,
+          register_ip TEXT,
+          last_login_ip TEXT,
           created_at INTEGER,
           updated_at INTEGER,
           last_login_at INTEGER
@@ -404,6 +409,7 @@ async function ensurePgTablesVercel(sql: any) {
           progress INTEGER DEFAULT 0,
           completed INTEGER DEFAULT 0,
           stars INTEGER DEFAULT 0,
+          last_access_ip TEXT,
           last_access_at INTEGER,
           created_at INTEGER,
           updated_at INTEGER
@@ -712,6 +718,8 @@ function ensureSqliteTables(sqliteDb: any) {
       phone TEXT,
       password TEXT,
       is_admin INTEGER DEFAULT 0,
+      register_ip TEXT,
+      last_login_ip TEXT,
       created_at INTEGER,
       updated_at INTEGER,
       last_login_at INTEGER
@@ -728,6 +736,16 @@ function ensureSqliteTables(sqliteDb: any) {
   const hasIsAdminColumn = columns.some((col: any[]) => col[1] === 'is_admin');
   if (!hasIsAdminColumn) {
     sqliteDb.run(`ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0`);
+  }
+
+  const hasRegisterIpColumn = columns.some((col: any[]) => col[1] === 'register_ip');
+  if (!hasRegisterIpColumn) {
+    sqliteDb.run(`ALTER TABLE users ADD COLUMN register_ip TEXT`);
+  }
+
+  const hasLastLoginIpColumn = columns.some((col: any[]) => col[1] === 'last_login_ip');
+  if (!hasLastLoginIpColumn) {
+    sqliteDb.run(`ALTER TABLE users ADD COLUMN last_login_ip TEXT`);
   }
 
   sqliteDb.run(`
@@ -829,6 +847,28 @@ function ensureSqliteTables(sqliteDb: any) {
   `);
 
   sqliteDb.run(`
+    CREATE TABLE IF NOT EXISTS learning_progress (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      course_id TEXT NOT NULL,
+      progress INTEGER DEFAULT 0,
+      completed INTEGER DEFAULT 0,
+      stars INTEGER DEFAULT 0,
+      last_access_ip TEXT,
+      last_access_at INTEGER,
+      created_at INTEGER,
+      updated_at INTEGER
+    )
+  `);
+
+  const learningProgressColumnsResult = sqliteDb.exec(`PRAGMA table_info(learning_progress)`);
+  const learningProgressColumns = learningProgressColumnsResult[0]?.values || [];
+  const hasLastAccessIpColumn = learningProgressColumns.some((col: any[]) => col[1] === 'last_access_ip');
+  if (!hasLastAccessIpColumn) {
+    sqliteDb.run(`ALTER TABLE learning_progress ADD COLUMN last_access_ip TEXT`);
+  }
+
+  sqliteDb.run(`
     CREATE TABLE IF NOT EXISTS wechat_sessions (
       id TEXT PRIMARY KEY,
       session_key TEXT NOT NULL UNIQUE,
@@ -848,6 +888,8 @@ function ensureSqliteTables(sqliteDb: any) {
   sqliteDb.run(`CREATE INDEX IF NOT EXISTS subscriptions_user_idx ON subscriptions(user_id)`);
   sqliteDb.run(`CREATE INDEX IF NOT EXISTS subscriptions_grade_idx ON subscriptions(grade_id)`);
   sqliteDb.run(`CREATE INDEX IF NOT EXISTS subscriptions_status_idx ON subscriptions(status)`);
+  sqliteDb.run(`CREATE INDEX IF NOT EXISTS learning_progress_user_idx ON learning_progress(user_id)`);
+  sqliteDb.run(`CREATE INDEX IF NOT EXISTS learning_progress_course_idx ON learning_progress(course_id)`);
   sqliteDb.run(`CREATE INDEX IF NOT EXISTS wechat_sessions_session_key_idx ON wechat_sessions(session_key)`);
 
   seedSqliteInitialData(sqliteDb);
