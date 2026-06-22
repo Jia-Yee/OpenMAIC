@@ -9,8 +9,6 @@ import {
   ChevronDown,
   Sparkles,
   Brain,
-  Target,
-  Award,
   Hash,
   Plus,
   Shapes,
@@ -29,7 +27,6 @@ const i18n = {
   zh: {
     brand: '韦达学习',
     brandSub: '智能互动学习平台',
-    admin: '管理入口',
     heroBadge: 'AI驱动的个性化学习体验',
     heroTitle1: '让数学学习变得',
     heroTitle2: '有趣又高效',
@@ -59,12 +56,19 @@ const i18n = {
     feature3Title: '趣味挑战',
     feature3Desc: '游戏化学习体验，奖励机制激发学习动力，在快乐中成长进步。',
     ctaBtn: '开始学习',
+    aboutTitle: '关于韦达学习',
+    aboutDesc: '韦达学习是一个基于AI探索的各国数学教育课堂平台，由来自中国、美国、法国等国家的教育和技术团队成员共同开发。我们致力于将全球优秀的数学教育理念与AI技术相结合，为每个孩子提供个性化、互动式的学习体验。',
+    aboutGlobal: '全球团队',
+    aboutGlobalDesc: '来自不同国家的教育专家和工程师，融合多元文化视角',
+    aboutAI: 'AI驱动',
+    aboutAIDesc: '利用先进的人工智能技术，打造智能化的学习路径和互动课堂',
+    aboutExplore: '探索式学习',
+    aboutExploreDesc: '鼓励学生主动探索和发现，培养数学思维和问题解决能力',
     footer: '韦达学习 - 让学习更有趣',
   },
   en: {
-    brand: 'Vieta Learning',
+    brand: 'Viete Learning',
     brandSub: 'Interactive Learning Platform',
-    admin: 'Admin',
     heroBadge: 'AI-Powered Personalized Learning',
     heroTitle1: 'Make Math Learning',
     heroTitle2: 'Fun & Effective',
@@ -94,7 +98,15 @@ const i18n = {
     feature3Title: 'Fun Challenges',
     feature3Desc: 'Gamified learning experience with reward mechanisms. Grow and improve with joy.',
     ctaBtn: 'Start Learning',
-    footer: 'Vieta Learning - Making Learning Fun',
+    aboutTitle: 'About Viete Learning',
+    aboutDesc: 'Viete Learning is an AI-powered platform for exploring math education classrooms across countries, developed by a team of educators and engineers from China, the United States, France, and beyond. We are dedicated to combining the world\'s finest math education philosophies with AI technology to provide every child with a personalized, interactive learning experience.',
+    aboutGlobal: 'Global Team',
+    aboutGlobalDesc: 'Education experts and engineers from different countries, blending diverse cultural perspectives',
+    aboutAI: 'AI-Powered',
+    aboutAIDesc: 'Leveraging advanced AI technology to create intelligent learning paths and interactive classrooms',
+    aboutExplore: 'Exploratory Learning',
+    aboutExploreDesc: 'Encouraging students to actively explore and discover, cultivating mathematical thinking and problem-solving skills',
+    footer: 'Viete Learning - Making Learning Fun',
   },
 };
 
@@ -419,9 +431,6 @@ function HomePage() {
                 <Languages className="w-4 h-4" />
                 <span className="text-sm font-medium">{lang === 'zh' ? 'EN' : '中文'}</span>
               </Button>
-              <Button variant="outline" onClick={() => router.push('/admin')}>
-                {t.admin}
-              </Button>
             </div>
           </div>
         </div>
@@ -620,43 +629,54 @@ function HomePage() {
           </div>
         </motion.section>
 
-        {/* Features */}
+        {/* About */}
         <motion.section
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
-          className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16"
+          className="mb-16"
         >
-          <motion.div 
-            whileHover={{ y: -4, scale: 1.02 }} 
-            className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-shadow"
-          >
-            <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center mb-4">
-              <Brain className="w-6 h-6 text-blue-600" />
+          <div className="bg-white rounded-2xl p-8 border border-gray-100 shadow-sm">
+            <h3 className="text-2xl font-bold text-gray-900 mb-4 text-center">{t.aboutTitle}</h3>
+            <p className="text-gray-600 max-w-3xl mx-auto text-center mb-8 leading-relaxed">
+              {t.aboutDesc}
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <motion.div 
+                whileHover={{ y: -4, scale: 1.02 }} 
+                className="text-center p-4"
+              >
+                <div className="w-14 h-14 bg-blue-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                  <svg viewBox="0 0 24 24" className="w-7 h-7 text-blue-600" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                  </svg>
+                </div>
+                <h4 className="font-semibold text-gray-900 mb-1">{t.aboutGlobal}</h4>
+                <p className="text-sm text-gray-500">{t.aboutGlobalDesc}</p>
+              </motion.div>
+              <motion.div 
+                whileHover={{ y: -4, scale: 1.02 }} 
+                className="text-center p-4"
+              >
+                <div className="w-14 h-14 bg-indigo-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                  <Brain className="w-7 h-7 text-indigo-600" />
+                </div>
+                <h4 className="font-semibold text-gray-900 mb-1">{t.aboutAI}</h4>
+                <p className="text-sm text-gray-500">{t.aboutAIDesc}</p>
+              </motion.div>
+              <motion.div 
+                whileHover={{ y: -4, scale: 1.02 }} 
+                className="text-center p-4"
+              >
+                <div className="w-14 h-14 bg-green-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                  <Lightbulb className="w-7 h-7 text-green-600" />
+                </div>
+                <h4 className="font-semibold text-gray-900 mb-1">{t.aboutExplore}</h4>
+                <p className="text-sm text-gray-500">{t.aboutExploreDesc}</p>
+              </motion.div>
             </div>
-            <h4 className="font-semibold text-gray-900 mb-2">{t.feature1Title}</h4>
-            <p className="text-sm text-gray-500">{t.feature1Desc}</p>
-          </motion.div>
-          <motion.div 
-            whileHover={{ y: -4, scale: 1.02 }} 
-            className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-shadow"
-          >
-            <div className="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center mb-4">
-              <Target className="w-6 h-6 text-indigo-600" />
-            </div>
-            <h4 className="font-semibold text-gray-900 mb-2">{t.feature2Title}</h4>
-            <p className="text-sm text-gray-500">{t.feature2Desc}</p>
-          </motion.div>
-          <motion.div 
-            whileHover={{ y: -4, scale: 1.02 }} 
-            className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-shadow"
-          >
-            <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center mb-4">
-              <Award className="w-6 h-6 text-green-600" />
-            </div>
-            <h4 className="font-semibold text-gray-900 mb-2">{t.feature3Title}</h4>
-            <p className="text-sm text-gray-500">{t.feature3Desc}</p>
-          </motion.div>
+          </div>
         </motion.section>
       </main>
 
@@ -664,6 +684,9 @@ function HomePage() {
         <div className="max-w-6xl mx-auto px-4 py-8">
           <div className="text-center text-sm text-gray-500">
             <p>{t.footer}</p>
+            <p className="mt-2">
+              <a href="mailto:aimath@viete.xyz" className="text-blue-500 hover:text-blue-600 transition-colors">aimath@viete.xyz</a>
+            </p>
           </div>
         </div>
       </footer>
