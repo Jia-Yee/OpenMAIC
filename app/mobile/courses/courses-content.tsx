@@ -11,6 +11,7 @@ interface Course {
   videoUrl?: string;
   duration?: number;
   isFree?: boolean;
+  classroomId?: string;
 }
 
 export default function CoursesContent() {
@@ -45,8 +46,11 @@ export default function CoursesContent() {
   };
 
   const handleCourseClick = (course: Course) => {
-    // Navigate to classroom or video player
-    router.push(`/mobile/classroom/${course.id}`);
+    if (course.classroomId) {
+      router.push(`/mobile/classroom/${course.classroomId}?mode=adventure&courseId=${course.id}`);
+    } else {
+      router.push(`/mobile/classroom/${course.id}?mode=adventure&courseId=${course.id}`);
+    }
   };
 
   const handleBack = () => {

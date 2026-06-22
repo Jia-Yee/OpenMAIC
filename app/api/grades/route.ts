@@ -15,25 +15,26 @@ async function ensureDb() {
 /**
  * GET /api/grades?textbookId=xxx
  * Get grades by textbook
+ * If no textbookId, return all grades
  */
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const textbookId = searchParams.get('textbookId');
 
-    if (!textbookId) {
-      return NextResponse.json(
-        { error: 'textbookId is required' },
-        { status: 400 }
-      );
-    }
-
     const db = await ensureDb();
 
-    const result = await db.select()
-      .from(grades)
-      .where(eq(grades.textbookId, textbookId))
-      .orderBy(asc(grades.sortOrder));
+    let result;
+    if (textbookId) {
+      result = await db.select()
+        .from(grades)
+        .where(eq(grades.textbookId, textbookId))
+        .orderBy(asc(grades.sortOrder));
+    } else {
+      result = await db.select()
+        .from(grades)
+        .orderBy(asc(grades.sortOrder));
+    }
 
     // Transform to match expected format with price string
     const formatted = result.map((g: { price?: number; originalPrice?: number }) => ({
