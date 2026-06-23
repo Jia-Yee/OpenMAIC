@@ -690,42 +690,62 @@ export default function CoursesPage() {
     return matchingGrade.grades[0]?.id || '';
   };
 
+  // 根据年级显示名称和学期获取所有需要关联的 gradeId 列表
+  const getGradeIdsFromDisplay = (gradeDisplay: string, semester: string): string[] => {
+    const matchingGrade = uniqueGrades.find(g => g.displayName === gradeDisplay);
+    if (!matchingGrade) return [];
+    
+    if (semester === 'first') {
+      const id = matchingGrade.grades.find(g => g.name.includes('上册'))?.id;
+      return id ? [id] : [];
+    } else if (semester === 'second') {
+      const id = matchingGrade.grades.find(g => g.name.includes('下册'))?.id;
+      return id ? [id] : [];
+    }
+    // "全册" - 同时关联上册和下册
+    return matchingGrade.grades.map(g => g.id).filter(Boolean);
+  };
+
   const handleAddCourse = async () => {
     if (!addForm.selectedGradeDisplay || !addForm.title) {
       alert('请填写完整信息');
       return;
     }
 
-    const gradeId = getGradeIdFromDisplay(addForm.selectedGradeDisplay, addForm.semester);
-    if (!gradeId) {
+    const gradeIds = getGradeIdsFromDisplay(addForm.selectedGradeDisplay, addForm.semester);
+    if (gradeIds.length === 0) {
       alert('请选择年级');
       return;
     }
 
     try {
-      const res = await fetch('/api/admin/courses', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          gradeId,
-          title: addForm.title,
-          description: addForm.description,
-          semester: addForm.semester,
-          isFree: addForm.isFree,
-          duration: addForm.duration ? parseInt(addForm.duration) : 0,
-          sortOrder: addForm.sortOrder ? parseInt(addForm.sortOrder) : 0,
-          classroomId: addForm.classroomId,
-        }),
-      });
+      // For "full" semester, create course in both 上册 and 下册
+      for (const gradeId of gradeIds) {
+        const res = await fetch('/api/admin/courses', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            gradeId,
+            title: addForm.title,
+            description: addForm.description,
+            semester: addForm.semester,
+            isFree: addForm.isFree,
+            duration: addForm.duration ? parseInt(addForm.duration) : 0,
+            sortOrder: addForm.sortOrder ? parseInt(addForm.sortOrder) : 0,
+            classroomId: addForm.classroomId,
+          }),
+        });
 
-      if (res.ok) {
-        alert('课程创建成功');
-        setShowAddModal(false);
-        fetchCourses();
-      } else {
-        const data = await res.json();
-        alert(data.error || '创建失败');
+        if (!res.ok) {
+          const data = await res.json();
+          alert(data.error || '创建失败');
+          return;
+        }
       }
+
+      alert('课程创建成功');
+      setShowAddModal(false);
+      fetchCourses();
     } catch (error) {
       console.error('Error creating course:', error);
       alert('创建失败');
