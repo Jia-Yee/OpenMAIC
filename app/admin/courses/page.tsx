@@ -591,6 +591,22 @@ export default function CoursesPage() {
       
       console.log(`[Sync] Uploaded ${mediaFilesForUpload.length} media files`);
       
+      // Clean up stale files that exist in storage but are not in the new upload
+      const allNewFilePaths = filesForUpload.map(f => f.path);
+      try {
+        const cleanupRes = await fetch(`/api/classrooms/${stage.id}/cleanup`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ newFilePaths: allNewFilePaths }),
+        });
+        const cleanupResult = await cleanupRes.json();
+        if (cleanupResult.success && cleanupResult.deletedCount > 0) {
+          console.log(`[Sync] Cleaned up ${cleanupResult.deletedCount} stale files:`, cleanupResult.deletedFiles);
+        }
+      } catch (cleanupError) {
+        console.error('[Sync] Cleanup failed (non-critical):', cleanupError);
+      }
+      
       const classroomRes = await fetch('/api/admin/classrooms', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1313,6 +1329,15 @@ export default function CoursesPage() {
                               className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition text-sm disabled:opacity-50"
                             >
                               {syncing ? '同步中...' : '上传'}
+                            </button>
+                          )}
+                          {!classroom.localOnly && (
+                            <button
+                              onClick={() => handleSyncSingleClassroom(classroom.id)}
+                              disabled={syncing}
+                              className="px-3 py-1 bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200 transition text-sm disabled:opacity-50"
+                            >
+                              {syncing ? '替换中...' : '重新上传'}
                             </button>
                           )}
                           <button

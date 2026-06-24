@@ -420,6 +420,28 @@ export async function deleteClassroomData(classroomId: string): Promise<void> {
   }
 }
 
+export async function deleteClassroomFiles(classroomId: string, filePaths: string[]): Promise<void> {
+  if (!isR2Configured() || filePaths.length === 0) {
+    return;
+  }
+
+  const endpoint = process.env.R2_ENDPOINT!;
+  const bucketName = process.env.R2_BUCKET_NAME!;
+
+  try {
+    for (const filePath of filePaths) {
+      const path = `/classrooms/${classroomId}/${filePath}`;
+      const headers = await signRequest('DELETE', path);
+      await fetch(`${endpoint}/${bucketName}${path}`, {
+        method: 'DELETE',
+        headers: headers,
+      });
+    }
+  } catch (error) {
+    console.error(`[R2Storage] Error deleting classroom files:`, error);
+  }
+}
+
 export async function listClassroomFiles(): Promise<string[]> {
   if (!isR2Configured()) {
     return [];

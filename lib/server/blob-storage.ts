@@ -251,6 +251,24 @@ export async function deleteClassroomData(classroomId: string): Promise<void> {
   }
 }
 
+export async function deleteClassroomFiles(classroomId: string, filePaths: string[]): Promise<void> {
+  const r2Module = await getR2Module();
+  if (r2Module) {
+    return await r2Module.deleteClassroomFiles(classroomId, filePaths);
+  }
+
+  const blobModule = await getBlobModule();
+  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  
+  if (blobModule && token) {
+    for (const filePath of filePaths) {
+      await blobModule.del(`classrooms/${classroomId}/${filePath}`, {
+        token: token,
+      });
+    }
+  }
+}
+
 export async function listClassroomFiles(): Promise<string[]> {
   const r2Module = await getR2Module();
   if (r2Module) {
