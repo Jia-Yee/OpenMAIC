@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 const navItems = [
   { label: '仪表盘', href: '/admin', icon: '📊' },
   { label: '课堂管理', href: '/admin/classrooms', icon: '🎓' },
+  { label: 'Studio', href: '/admin/studio', icon: '🎬' },
   { label: '用户管理', href: '/admin/users', icon: '👥' },
   { label: '课程管理', href: '/admin/courses', icon: '📚' },
 ];
@@ -39,12 +40,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         setIsLoggedIn(true);
       } catch (e) {
         console.error('Failed to parse admin user data:', e);
-        logout();
+        setIsLoggedIn(false);
+        if (pathname !== '/admin/login') {
+          router.push('/admin/login');
+        }
       }
-    }
-    
-    if (!isLoggedIn && pathname !== '/admin/login') {
-      router.push('/admin/login');
+    } else {
+      setIsLoggedIn(false);
+      if (pathname !== '/admin/login') {
+        router.push('/admin/login');
+      }
     }
     
     setLoading(false);

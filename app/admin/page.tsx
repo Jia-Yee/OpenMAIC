@@ -95,8 +95,8 @@ export default function AdminDashboard() {
           >
             <span className="text-2xl">🎓</span>
             <div className="text-left">
-              <p className="font-medium text-gray-800">管理课堂</p>
-              <p className="text-sm text-gray-500">同步课堂到课程</p>
+              <p className="font-medium text-gray-800">课堂管理</p>
+              <p className="text-sm text-gray-500">创建、编辑和管理课堂</p>
             </div>
           </button>
           <button
