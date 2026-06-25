@@ -330,6 +330,7 @@ export default function AdventureContent() {
       
       if (courses.length === 0) {
         console.log('No courses found');
+        setIslands([]);
         setLoading(false);
         return;
       }
@@ -391,6 +392,17 @@ export default function AdventureContent() {
       setLoading(false);
     }
   };
+
+  // Auto-scroll to show the first island when islands load
+  useEffect(() => {
+    if (islands.length === 0 || loading) return;
+    const screenW = window.innerWidth;
+    const screenH = window.innerHeight;
+    const firstIsland = islands[0];
+    const newOffsetX = Math.min(0, Math.max(-(MAP_WIDTH - screenW), Math.round(screenW / 2 - firstIsland.x)));
+    const newOffsetY = Math.min(0, Math.max(-(MAP_HEIGHT - screenH + 150), Math.round(screenH / 2 - firstIsland.y)));
+    setOffset({ x: newOffsetX, y: newOffsetY });
+  }, [islands, loading]);
 
   const handleIslandClick = (island: Island) => {
     if (isDragging) return;
