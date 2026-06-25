@@ -38,6 +38,14 @@ interface Classroom {
   updatedAt: string;
   synced?: boolean;
   localOnly?: boolean;
+  gradeId?: string;
+  gradeName?: string;
+}
+
+interface Prerequisite {
+  id: string;
+  prerequisiteId: string;
+  prerequisiteTitle: string;
 }
 
 export default function CoursesPage() {
@@ -46,6 +54,7 @@ export default function CoursesPage() {
   const [classrooms, setClassrooms] = useState<Classroom[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [syncingClassroomId, setSyncingClassroomId] = useState<string | null>(null);
   const [selectedGrade, setSelectedGrade] = useState<string>('');
   const [filterSubject, setFilterSubject] = useState<string>('');
   const [filterStatus, setFilterStatus] = useState<string>('');
@@ -61,6 +70,9 @@ export default function CoursesPage() {
   const [selectedClassroom, setSelectedClassroom] = useState<Classroom | null>(null);
   const [activeTab, setActiveTab] = useState<'courses' | 'classrooms'>('courses');
   const [selectedCourseIds, setSelectedCourseIds] = useState<Set<string>>(new Set());
+  const [coursePrerequisites, setCoursePrerequisites] = useState<Prerequisite[]>([]);
+  const [classroomGradeFilter, setClassroomGradeFilter] = useState<string>('');
+  const [classroomSortBy, setClassroomSortBy] = useState<'updatedAt' | 'name' | 'sceneCount'>('updatedAt');
 
   // 从年级中提取唯一的年级名称（去掉上下册）
   const getGradeDisplayName = (name: string) => {
@@ -435,7 +447,7 @@ export default function CoursesPage() {
 
   const handleSyncSingleClassroom = async (classroomId: string) => {
     try {
-      setSyncing(true);
+      setSyncingClassroomId(classroomId);
       const stage = await db.stages.get(classroomId);
       if (!stage) {
         alert('课堂不存在');
@@ -629,7 +641,7 @@ export default function CoursesPage() {
       console.error('Error syncing classroom:', error);
       alert('同步失败');
     } finally {
-      setSyncing(false);
+      setSyncingClassroomId(null);
     }
   };
 
@@ -783,6 +795,7 @@ export default function CoursesPage() {
       isFree: course.isFree || false,
     });
     setShowEditModal(true);
+    fetchPrerequisites(course.id);
   };
 
   const handleUpdateCourse = async () => {
@@ -931,6 +944,122 @@ export default function CoursesPage() {
     }
   };
 
+  const fetchPrerequisites = async (courseId: string) => {
+    try {
+      const res = await fetch(`/api/admin/courses/${courseId}/prerequisites`);
+      const data = await res.json();
+      if (data.success) {
+        setCoursePrerequisites(data.prerequisites || []);
+      }
+    } catch (error) {
+      console.error('Error fetching prerequisites:', error);
+      setCoursePrerequisites([]);
+    }
+  };
+
+  const handleAddPrerequisite = async (courseId: string, prerequisiteId: string) => {
+    try {
+      const res = await fetch(`/api/admin/courses/${courseId}/prerequisites`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prerequisiteIds: [prerequisiteId] }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchPrerequisites(courseId);
+      } else {
+        alert(data.error || '添加前置课程失败');
+      }
+    } catch (error) {
+      console.error('Error adding prerequisite:', error);
+      alert('添加前置课程失败');
+    }
+  };
+
+  const handleRemovePrerequisite = async (courseId: string, prerequisiteId: string) => {
+    try {
+      const res = await fetch(`/api/admin/courses/${courseId}/prerequisites?prerequisiteId=${prerequisiteId}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchPrerequisites(courseId);
+      }
+    } catch (error) {
+      console.error('Error removing prerequisite:', error);
+    }
+  };
+
+  const handleMoveCourse = async (courseId: string, direction: 'up' | 'down') => {
+    const currentList = [...filteredCourses];
+    const currentIndex = currentList.findIndex(c => c.id === courseId);
+    if (currentIndex === -1) return;
+
+    const swapIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    if (swapIndex < 0 || swapIndex >= currentList.length) return;
+
+    // Swap sort orders
+    const currentCourse = currentList[currentIndex];
+    const swapCourse = currentList[swapIndex];
+
+    try {
+      // Update both courses' sort order locally
+      setCourses(prev => prev.map(c => {
+        if (c.id === currentCourse.id) return { ...c, sortOrder: swapCourse.sortOrder };
+        if (c.id === swapCourse.id) return { ...c, sortOrder: currentCourse.sortOrder };
+        return c;
+      }));
+
+      // Update on server
+      const gradeId = currentCourse.gradeId;
+      const reorderedList = [...filteredCourses];
+      [reorderedList[currentIndex], reorderedList[swapIndex]] = [reorderedList[swapIndex], reorderedList[currentIndex]];
+
+      await fetch('/api/admin/courses/reorder', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          gradeId,
+          order: reorderedList.map((c, i) => ({ courseId: c.id, sortOrder: i })),
+        }),
+      });
+    } catch (error) {
+      console.error('Error reordering course:', error);
+      fetchCourses(); // Revert on error
+    }
+  };
+
+  // 课堂列表：按年级筛选和排序
+  const getFilteredAndSortedClassrooms = () => {
+    let result = [...classrooms];
+
+    if (classroomGradeFilter) {
+      result = result.filter(c => {
+        // 通过关联的课程找到年级
+        const linkedCourse = courses.find(course => course.classroomId === c.id);
+        if (linkedCourse) {
+          const courseGradeDisplay = getGradeDisplayName(linkedCourse.gradeName || '');
+          return courseGradeDisplay === classroomGradeFilter;
+        }
+        return false;
+      });
+    }
+
+    result.sort((a, b) => {
+      switch (classroomSortBy) {
+        case 'name':
+          return a.name.localeCompare(b.name, 'zh-CN');
+        case 'sceneCount':
+          return (b.sceneCount || 0) - (a.sceneCount || 0);
+        case 'updatedAt':
+        default:
+          return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+      }
+    });
+
+    return result;
+  };
+
   const subjects = [...new Set(courses.map((c) => c.subjectName).filter(Boolean))];
 
   return (
@@ -944,7 +1073,7 @@ export default function CoursesPage() {
         <div className="flex gap-2">
           <button
             onClick={handleSyncAllClassrooms}
-            disabled={syncing}
+            disabled={syncing || !!syncingClassroomId}
             className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {syncing ? '同步中...' : '同步课堂'}
@@ -989,7 +1118,7 @@ export default function CoursesPage() {
               : 'text-gray-500 hover:text-gray-700'
           }`}
         >
-          课堂管理
+          课程管理
         </button>
       </div>
 
@@ -1189,6 +1318,24 @@ export default function CoursesPage() {
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex gap-2">
+                          <div className="flex flex-col gap-0.5">
+                            <button
+                              onClick={() => handleMoveCourse(course.id, 'up')}
+                              disabled={filteredCourses.findIndex(c => c.id === course.id) === 0}
+                              className="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded hover:bg-gray-200 transition text-xs disabled:opacity-30"
+                              title="上移"
+                            >
+                              ▲
+                            </button>
+                            <button
+                              onClick={() => handleMoveCourse(course.id, 'down')}
+                              disabled={filteredCourses.findIndex(c => c.id === course.id) === filteredCourses.length - 1}
+                              className="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded hover:bg-gray-200 transition text-xs disabled:opacity-30"
+                              title="下移"
+                            >
+                              ▼
+                            </button>
+                          </div>
                           <button
                             onClick={() => handleToggleFree(course)}
                             className={`px-3 py-1 rounded-lg transition text-sm ${
@@ -1250,17 +1397,50 @@ export default function CoursesPage() {
         /* Classroom Management */
         <div className="bg-white rounded-xl shadow-sm overflow-hidden">
           <div className="p-4 border-b border-gray-200">
-            <h3 className="text-lg font-semibold text-gray-800">课堂列表</h3>
-            <p className="text-sm text-gray-500 mt-1">从这里可以直接创建课程</p>
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-800">课堂列表</h3>
+                <p className="text-sm text-gray-500 mt-1">从这里可以直接创建课程</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <label className="text-sm text-gray-600">年级:</label>
+                  <select
+                    value={classroomGradeFilter}
+                    onChange={(e) => setClassroomGradeFilter(e.target.value)}
+                    className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  >
+                    <option value="">全部</option>
+                    {uniqueGrades.map((item) => (
+                      <option key={item.displayName} value={item.displayName}>
+                        {item.displayName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-sm text-gray-600">排序:</label>
+                  <select
+                    value={classroomSortBy}
+                    onChange={(e) => setClassroomSortBy(e.target.value as 'updatedAt' | 'name' | 'sceneCount')}
+                    className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  >
+                    <option value="updatedAt">更新时间</option>
+                    <option value="name">名称</option>
+                    <option value="sceneCount">场景数</option>
+                  </select>
+                </div>
+              </div>
+            </div>
           </div>
           {loading ? (
             <div className="p-12 text-center text-gray-500">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto mb-3"></div>
               加载中...
             </div>
-          ) : classrooms.length === 0 ? (
+          ) : getFilteredAndSortedClassrooms().length === 0 ? (
             <div className="p-12 text-center text-gray-500">
-              暂无课堂，请先在首页创建课堂
+              {classroomGradeFilter ? '该年级下暂无课堂' : '暂无课堂，请先在首页创建课堂'}
             </div>
           ) : (
             <table className="w-full">
@@ -1274,7 +1454,7 @@ export default function CoursesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {classrooms.map((classroom) => {
+                {getFilteredAndSortedClassrooms().map((classroom) => {
                   const isLinked = courses.some((c) => c.classroomId === classroom.id);
                   return (
                     <tr key={classroom.id} className="hover:bg-gray-50 transition">
@@ -1282,6 +1462,12 @@ export default function CoursesPage() {
                         <div>
                           <p className="font-medium text-gray-800">{classroom.name}</p>
                           <p className="text-sm text-gray-500 max-w-xs truncate">{classroom.description}</p>
+                          {(() => {
+                            const linkedCourse = courses.find(c => c.classroomId === classroom.id);
+                            return linkedCourse ? (
+                              <p className="text-xs text-indigo-500 mt-0.5">{linkedCourse.gradeName} {getSemesterName(linkedCourse.semester)}</p>
+                            ) : null;
+                          })()}
                         </div>
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-600">
@@ -1325,19 +1511,19 @@ export default function CoursesPage() {
                           {classroom.localOnly && (
                             <button
                               onClick={() => handleSyncSingleClassroom(classroom.id)}
-                              disabled={syncing}
+                              disabled={!!syncingClassroomId}
                               className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition text-sm disabled:opacity-50"
                             >
-                              {syncing ? '同步中...' : '上传'}
+                              {syncingClassroomId === classroom.id ? '同步中...' : '同步'}
                             </button>
                           )}
                           {!classroom.localOnly && (
                             <button
                               onClick={() => handleSyncSingleClassroom(classroom.id)}
-                              disabled={syncing}
+                              disabled={!!syncingClassroomId}
                               className="px-3 py-1 bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200 transition text-sm disabled:opacity-50"
                             >
-                              {syncing ? '替换中...' : '重新上传'}
+                              {syncingClassroomId === classroom.id ? '同步中...' : '重新上传'}
                             </button>
                           )}
                           <button
@@ -1348,7 +1534,7 @@ export default function CoursesPage() {
                           </button>
                           <button
                             onClick={() => handleDeleteClassroom(classroom.id)}
-                            disabled={syncing}
+                            disabled={!!syncingClassroomId}
                             className="px-3 py-1 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition text-sm disabled:opacity-50"
                           >
                             删除
@@ -1565,6 +1751,44 @@ export default function CoursesPage() {
                   />
                   <span className="text-sm font-medium text-gray-700">设为免费课程</span>
                 </label>
+              </div>
+              {/* 前置课程 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">前置课程</label>
+                {coursePrerequisites.length > 0 && (
+                  <div className="space-y-1 mb-2">
+                    {coursePrerequisites.map((prereq) => (
+                      <div key={prereq.id} className="flex items-center justify-between px-3 py-1.5 bg-indigo-50 rounded-lg">
+                        <span className="text-sm text-indigo-800">{prereq.prerequisiteTitle}</span>
+                        <button
+                          onClick={() => handleRemovePrerequisite(selectedCourse.id, prereq.prerequisiteId)}
+                          className="text-red-500 hover:text-red-700 text-sm"
+                        >
+                          移除
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <select
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      handleAddPrerequisite(selectedCourse.id, e.target.value);
+                      e.target.value = '';
+                    }
+                  }}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  defaultValue=""
+                >
+                  <option value="">选择要添加的前置课程</option>
+                  {courses
+                    .filter(c => c.id !== selectedCourse.id && !coursePrerequisites.some(p => p.prerequisiteId === c.id))
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.title} ({c.gradeName})
+                      </option>
+                    ))}
+                </select>
               </div>
             </div>
             <div className="p-6 border-t border-gray-100 flex justify-end gap-3">
