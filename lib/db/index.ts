@@ -276,6 +276,44 @@ async function ensurePgTables(client: any) {
         await client`ALTER TABLE classrooms DROP COLUMN data`;
       }
     }
+
+    // Migrate: add treasure_classroom_id and treasure_points to grades
+    try {
+      const gradesColumnsResult = await client`SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'grades'`;
+      const gradesColumns = gradesColumnsResult.map((row: any) => row.column_name);
+      if (!gradesColumns.includes('treasure_classroom_id')) {
+        console.log('Adding treasure_classroom_id column to grades table...');
+        await client`ALTER TABLE grades ADD COLUMN treasure_classroom_id TEXT`;
+      }
+      if (!gradesColumns.includes('treasure_points')) {
+        console.log('Adding treasure_points column to grades table...');
+        await client`ALTER TABLE grades ADD COLUMN treasure_points INTEGER DEFAULT 100`;
+      }
+    } catch (e) {
+      console.error('Error migrating grades table:', e);
+    }
+
+    // Create user_points table
+    try {
+      const userPointsResult = await client`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'user_points'`;
+      if (!userPointsResult.length) {
+        console.log('Creating user_points table...');
+        await client`
+          CREATE TABLE user_points (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            grade_id TEXT NOT NULL,
+            points INTEGER NOT NULL,
+            reason TEXT NOT NULL,
+            created_at INTEGER
+          )
+        `;
+        await client`CREATE INDEX user_points_user_idx ON user_points(user_id)`;
+        await client`CREATE INDEX user_points_grade_idx ON user_points(grade_id)`;
+      }
+    } catch (e) {
+      console.error('Error creating user_points table:', e);
+    }
   } catch (error) {
     console.error('Error ensuring PostgreSQL tables:', error);
   }
@@ -452,6 +490,46 @@ async function ensurePgTablesVercel(sql: any) {
       await sql`CREATE UNIQUE INDEX course_prerequisites_unique ON course_prerequisites(course_id, prerequisite_id)`;
       
       await seedInitialDataVercel(sql);
+    }
+    
+    // === Incremental migrations (run every time, use IF NOT EXISTS / column check) ===
+    
+    // Migrate: add treasure_classroom_id and treasure_points to grades
+    try {
+      const gradesColumnsResult = await sql`SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'grades'`;
+      const gradesColumns = gradesColumnsResult.rows.map((row: any) => row.column_name);
+      if (!gradesColumns.includes('treasure_classroom_id')) {
+        console.log('Adding treasure_classroom_id column to grades table on Vercel...');
+        await sql`ALTER TABLE grades ADD COLUMN treasure_classroom_id TEXT`;
+      }
+      if (!gradesColumns.includes('treasure_points')) {
+        console.log('Adding treasure_points column to grades table on Vercel...');
+        await sql`ALTER TABLE grades ADD COLUMN treasure_points INTEGER DEFAULT 100`;
+      }
+    } catch (e) {
+      console.error('Error migrating grades table on Vercel:', e);
+    }
+
+    // Create user_points table
+    try {
+      const userPointsResult = await sql`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'user_points'`;
+      if (!userPointsResult.rows.length) {
+        console.log('Creating user_points table on Vercel...');
+        await sql`
+          CREATE TABLE user_points (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            grade_id TEXT NOT NULL,
+            points INTEGER NOT NULL,
+            reason TEXT NOT NULL,
+            created_at INTEGER
+          )
+        `;
+        await sql`CREATE INDEX user_points_user_idx ON user_points(user_id)`;
+        await sql`CREATE INDEX user_points_grade_idx ON user_points(grade_id)`;
+      }
+    } catch (e) {
+      console.error('Error creating user_points table on Vercel:', e);
     }
     
     if (!classroomsResult.rows.length) {
@@ -891,6 +969,32 @@ function ensureSqliteTables(sqliteDb: any) {
   sqliteDb.run(`CREATE INDEX IF NOT EXISTS learning_progress_user_idx ON learning_progress(user_id)`);
   sqliteDb.run(`CREATE INDEX IF NOT EXISTS learning_progress_course_idx ON learning_progress(course_id)`);
   sqliteDb.run(`CREATE INDEX IF NOT EXISTS wechat_sessions_session_key_idx ON wechat_sessions(session_key)`);
+
+  // Migrate: add treasure_classroom_id and treasure_points to grades
+  const gradesColumnsResult = sqliteDb.exec(`PRAGMA table_info(grades)`);
+  const gradesColumns = gradesColumnsResult[0]?.values || [];
+  const hasTreasureClassroomId = gradesColumns.some((col: any[]) => col[1] === 'treasure_classroom_id');
+  if (!hasTreasureClassroomId) {
+    sqliteDb.run(`ALTER TABLE grades ADD COLUMN treasure_classroom_id TEXT`);
+  }
+  const hasTreasurePoints = gradesColumns.some((col: any[]) => col[1] === 'treasure_points');
+  if (!hasTreasurePoints) {
+    sqliteDb.run(`ALTER TABLE grades ADD COLUMN treasure_points INTEGER DEFAULT 100`);
+  }
+
+  // Create user_points table
+  sqliteDb.run(`
+    CREATE TABLE IF NOT EXISTS user_points (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      grade_id TEXT NOT NULL,
+      points INTEGER NOT NULL,
+      reason TEXT NOT NULL,
+      created_at INTEGER
+    )
+  `);
+  sqliteDb.run(`CREATE INDEX IF NOT EXISTS user_points_user_idx ON user_points(user_id)`);
+  sqliteDb.run(`CREATE INDEX IF NOT EXISTS user_points_grade_idx ON user_points(grade_id)`);
 
   seedSqliteInitialData(sqliteDb);
 }

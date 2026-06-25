@@ -40,6 +40,8 @@ interface Grade {
   id: string;
   name: string;
   textbookId: string;
+  treasureClassroomId?: string;
+  treasurePoints?: number;
 }
 
 interface User {
@@ -59,7 +61,7 @@ export default function AdventureContent() {
   const [islands, setIslands] = useState<Island[]>([]);
   const [loading, setLoading] = useState(true);
   const [unlockedCount, setUnlockedCount] = useState(2);
-  const [gradeInfo, setGradeInfo] = useState<{id: string; name: string} | null>(null);
+  const [gradeInfo, setGradeInfo] = useState<{id: string; name: string; treasureClassroomId?: string; treasurePoints?: number} | null>(null);
   const [selectedIsland, setSelectedIsland] = useState<Island | null>(null);
   const [showExternalCourse, setShowExternalCourse] = useState(false);
   
@@ -75,6 +77,12 @@ export default function AdventureContent() {
   const [showConfig, setShowConfig] = useState(false);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [grades, setGrades] = useState<Grade[]>([]);
+
+  // Treasure modal state
+  const [showTreasureModal, setShowTreasureModal] = useState(false);
+  const [treasureClaimed, setTreasureClaimed] = useState(false);
+  const [treasureAlreadyClaimed, setTreasureAlreadyClaimed] = useState(false);
+  const [treasureClaiming, setTreasureClaiming] = useState(false);
   
   // Drag state
   const containerRef = useRef<HTMLDivElement>(null);
@@ -287,7 +295,7 @@ export default function AdventureContent() {
       const targetGradeId = gradeId || grades[0].id;
       const targetGrade = grades.find((g: any) => g.id === targetGradeId) || grades[0];
       console.log('Target grade:', targetGrade.name);
-      setGradeInfo({ id: targetGrade.id, name: targetGrade.name });
+      setGradeInfo({ id: targetGrade.id, name: targetGrade.name, treasureClassroomId: targetGrade.treasureClassroomId, treasurePoints: targetGrade.treasurePoints });
       
       console.log('Step 3: Fetching courses...');
       // Get token from localStorage
@@ -620,6 +628,28 @@ export default function AdventureContent() {
           })}
         </svg>
 
+        {/* Line from last island to treasure */}
+        {islands.length > 0 && (
+          <svg className="absolute inset-0 w-full h-full pointer-events-none">
+            {(() => {
+              const lastIsland = islands[islands.length - 1];
+              const treasureX = lastIsland.x + 150;
+              const treasureY = lastIsland.y - 80;
+              const canOpenTreasure = gradeInfo?.id === 'grade-rjb-1a' ? true : islands.every(i => i.completed);
+              return (
+                <path
+                  d={`M ${lastIsland.x} ${lastIsland.y} Q ${(lastIsland.x + treasureX) / 2} ${Math.min(lastIsland.y, treasureY) - 50} ${treasureX} ${treasureY}`}
+                  stroke={canOpenTreasure ? "rgba(255,200,50,0.7)" : "rgba(255,255,255,0.15)"}
+                  strokeWidth="3"
+                  strokeDasharray={canOpenTreasure ? "0" : "10,10"}
+                  fill="none"
+                  className={canOpenTreasure ? "drop-shadow-lg" : ""}
+                />
+              );
+            })()}
+          </svg>
+        )}
+
         {/* Islands */}
         {islands.map((island, index) => (
           <button
@@ -681,21 +711,51 @@ export default function AdventureContent() {
 
         {/* Treasure */}
         {islands.length > 0 && (
-          <div 
-            className="absolute"
+          <button
+            onClick={() => {
+              const allCompleted = islands.every(i => i.completed);
+              // TODO: 临时测试 - 一年级上册跳过完成检查，测试完成后改回 allCompleted
+              const canOpenTreasure = gradeInfo?.id === 'grade-rjb-1a' ? true : allCompleted;
+              if (canOpenTreasure && gradeInfo) {
+                // Check if already claimed
+                const token = localStorage.getItem('token');
+                const userData = localStorage.getItem('user');
+                const user = userData ? JSON.parse(userData) : null;
+                if (token && user?.id) {
+                  fetch(`/api/user/points?userId=${user.id}`)
+                    .then(res => res.json())
+                    .then(data => {
+                      if (data.success) {
+                        const alreadyHas = (data.gradePoints || []).some((gp: any) => gp.gradeId === gradeInfo.id);
+                        setTreasureAlreadyClaimed(alreadyHas);
+                      }
+                      setTreasureClaimed(false);
+                      setShowTreasureModal(true);
+                    })
+                    .catch(() => {
+                      setTreasureAlreadyClaimed(false);
+                      setShowTreasureModal(true);
+                    });
+                } else {
+                  setTreasureAlreadyClaimed(false);
+                  setShowTreasureModal(true);
+                }
+              }
+            }}
+            className={`absolute ${(gradeInfo?.id === 'grade-rjb-1a' ? true : islands.every(i => i.completed)) ? 'cursor-pointer' : 'cursor-default'}`}
             style={{ 
               left: islands[islands.length - 1].x + 150, 
               top: islands[islands.length - 1].y - 80,
               transform: 'translate(-50%, -50%)'
             }}
           >
-            <div className="text-6xl animate-bounce drop-shadow-2xl">
-              {islands.every(i => i.completed) ? '🎁' : '📦'}
+            <div className={`text-6xl drop-shadow-2xl ${(gradeInfo?.id === 'grade-rjb-1a' ? true : islands.every(i => i.completed)) ? 'animate-bounce' : ''}`}>
+              {(gradeInfo?.id === 'grade-rjb-1a' ? true : islands.every(i => i.completed)) ? '🎁' : '📦'}
             </div>
             <div className="mt-2 text-white text-sm whitespace-nowrap bg-black/50 backdrop-blur-sm px-3 py-1 rounded-lg">
-              {islands.every(i => i.completed) ? '宝藏已解锁！' : '终极宝藏'}
+              {islands.every(i => i.completed) ? '终极宝藏' : '终极宝藏'}
             </div>
-          </div>
+          </button>
         )}
       </div>
 
@@ -765,6 +825,74 @@ export default function AdventureContent() {
               frameBorder="0"
               allowFullScreen
             />
+          </div>
+        </div>
+      )}
+
+      {/* Treasure Modal */}
+      {showTreasureModal && gradeInfo && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-gradient-to-br from-amber-900 to-indigo-900 rounded-3xl p-6 max-w-sm w-full shadow-2xl border border-amber-400/30">
+            <div className="text-center">
+              <div className="text-7xl mb-4">
+                {treasureClaimed || treasureAlreadyClaimed ? '🎉' : '🎁'}
+              </div>
+
+              {treasureAlreadyClaimed && !treasureClaimed ? (
+                <>
+                  <h2 className="text-2xl font-bold text-white/80 mb-2">终极宝藏</h2>
+                  <p className="text-white/60 text-sm">你已领取过该年级的宝藏奖励</p>
+                </>
+              ) : (
+                <>
+                  <h2 className="text-2xl font-bold text-amber-300 mb-2">
+                    {treasureClaimed ? '宝藏已开启！' : '恭喜通关！'}
+                  </h2>
+                  <p className="text-white/70 mb-3">
+                    你已完成「{gradeInfo.name}」的全部课程
+                  </p>
+                  <div className="bg-amber-500/20 border border-amber-400/30 rounded-xl p-3 mb-3">
+                    <div className="text-3xl font-bold text-amber-400">+{gradeInfo.treasurePoints || 100} 积分</div>
+                  </div>
+                  <div className="bg-green-500/20 border border-green-400/30 rounded-xl p-2 mb-4">
+                    <p className="text-green-300 text-sm">🗝️ 可以解锁下一个课堂！</p>
+                  </div>
+                  {!treasureClaimed && (
+                    <button
+                      onClick={async () => {
+                        const token = localStorage.getItem('token');
+                        const userData = localStorage.getItem('user');
+                        const user = userData ? JSON.parse(userData) : null;
+                        if (!token || !user?.id) { alert('请先登录'); return; }
+                        setTreasureClaiming(true);
+                        try {
+                          const res = await fetch('/api/user/points', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ userId: user.id, gradeId: gradeInfo.id, points: gradeInfo.treasurePoints || 100, reason: 'treasure_completion' }),
+                          });
+                          const data = await res.json();
+                          if (data.success) setTreasureClaimed(true);
+                          else alert(data.error || '领取失败');
+                        } catch { alert('领取失败'); }
+                        finally { setTreasureClaiming(false); }
+                      }}
+                      disabled={treasureClaiming}
+                      className="w-full py-3 bg-gradient-to-r from-amber-500 to-amber-600 text-white text-lg font-bold rounded-xl active:scale-95 disabled:opacity-50"
+                    >
+                      {treasureClaiming ? '领取中...' : '领取奖励'}
+                    </button>
+                  )}
+                </>
+              )}
+
+              <button
+                onClick={() => { setShowTreasureModal(false); setTreasureClaimed(false); }}
+                className="w-full mt-2 py-2 bg-white/10 text-white rounded-xl hover:bg-white/20 transition"
+              >
+                关闭
+              </button>
+            </div>
           </div>
         </div>
       )}

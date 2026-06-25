@@ -77,6 +77,8 @@ export const grades = pgTable('grades', {
   coverUrl: text('cover_url'),
   price: numeric('price').default('0'),
   originalPrice: numeric('original_price'),
+  treasureClassroomId: text('treasure_classroom_id'),
+  treasurePoints: integer('treasure_points').default(100),
   sortOrder: integer('sort_order').default(0),
   isActive: integer('is_active').default(1),
 }, (table) => ({
@@ -87,6 +89,10 @@ export const gradesRelations = relations(grades, ({ one, many }) => ({
   textbook: one(textbooks, {
     fields: [grades.textbookId],
     references: [textbooks.id],
+  }),
+  treasureClassroom: one(classrooms, {
+    fields: [grades.treasureClassroomId],
+    references: [classrooms.id],
   }),
   courses: many(courses),
 }));
@@ -244,6 +250,29 @@ export const classrooms = pgTable('classrooms', {
   idx: index('classrooms_idx').on(table.id),
 }));
 
+export const userPoints = pgTable('user_points', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  gradeId: text('grade_id').notNull().references(() => grades.id, { onDelete: 'cascade' }),
+  points: integer('points').notNull(),
+  reason: text('reason').notNull(),
+  createdAt: integer('created_at').$defaultFn(() => Math.floor(Date.now() / 1000)),
+}, (table) => ({
+  userIdx: index('user_points_user_idx').on(table.userId),
+  gradeIdx: index('user_points_grade_idx').on(table.gradeId),
+}));
+
+export const userPointsRelations = relations(userPoints, ({ one }) => ({
+  user: one(users, {
+    fields: [userPoints.userId],
+    references: [users.id],
+  }),
+  grade: one(grades, {
+    fields: [userPoints.gradeId],
+    references: [grades.id],
+  }),
+}));
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Subject = typeof subjects.$inferSelect;
@@ -258,5 +287,7 @@ export type NewSubscription = typeof subscriptions.$inferInsert;
 export type WechatSession = typeof wechatSessions.$inferSelect;
 export type NewWechatSession = typeof wechatSessions.$inferInsert;
 export type Classroom = typeof classrooms.$inferSelect;
+export type UserPoints = typeof userPoints.$inferSelect;
+export type NewUserPoints = typeof userPoints.$inferInsert;
 
 export { eq, and, asc, desc, inArray, like, or, gt };

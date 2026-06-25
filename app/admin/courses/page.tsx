@@ -27,6 +27,8 @@ interface Grade {
   name: string;
   subjectName?: string;
   textbookId?: string;
+  treasureClassroomId?: string;
+  treasurePoints?: number;
 }
 
 interface Classroom {
@@ -1363,6 +1365,61 @@ export default function CoursesPage() {
                     </tr>
                   ))
                 )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* 终极宝藏设置 */}
+          <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+            <div className="p-4 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-800">终极宝藏设置</h3>
+              <p className="text-sm text-gray-500 mt-1">每个年级学完所有课程后可领取宝藏积分，积分可用于抵扣下一年级费用</p>
+            </div>
+            <table className="w-full">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-sm font-semibold text-gray-600">年级</th>
+                  <th className="px-6 py-3 text-left text-sm font-semibold text-gray-600">奖励积分</th>
+                  <th className="px-6 py-3 text-left text-sm font-semibold text-gray-600">操作</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {grades.map((grade) => (
+                  <tr key={grade.id} className="hover:bg-gray-50 transition">
+                    <td className="px-6 py-3">
+                      <span className="font-medium text-gray-800">{grade.name}</span>
+                    </td>
+                    <td className="px-6 py-3">
+                      <span className="text-sm font-medium text-amber-600">{grade.treasurePoints || 100} 积分</span>
+                    </td>
+                    <td className="px-6 py-3">
+                      <button
+                        onClick={() => {
+                          const newPoints = prompt('设置奖励积分：', String(grade.treasurePoints || 100));
+                          if (newPoints !== null) {
+                            fetch('/api/admin/grades', {
+                              method: 'PUT',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                gradeId: grade.id,
+                                treasurePoints: parseInt(newPoints) || 100,
+                              }),
+                            }).then(res => res.json()).then(data => {
+                              if (data.success) {
+                                fetchGrades();
+                              } else {
+                                alert('更新失败：' + (data.error || '未知错误'));
+                              }
+                            });
+                          }
+                        }}
+                        className="px-3 py-1 bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200 transition text-sm"
+                      >
+                        设置积分
+                      </button>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
