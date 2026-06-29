@@ -43,7 +43,7 @@ export async function GET(request: Request) {
       ));
 
     // Filter to only active (not expired) subscriptions
-    const activeSubscriptions = userSubscriptions.filter(s => s.expiresAt > now);
+    const activeSubscriptions = userSubscriptions.filter((s: { expiresAt: number }) => s.expiresAt > now);
 
     return NextResponse.json({
       success: true,
