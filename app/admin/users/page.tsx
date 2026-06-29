@@ -25,8 +25,8 @@ interface Subscription {
   userId: string;
   gradeId: string;
   status: string;
-  expiresAt: Date;
-  paidAt?: Date;
+  expiresAt: number;
+  paidAt?: number;
   amount?: number;
   gradeName?: string;
   subjectName?: string;
@@ -51,8 +51,8 @@ export default function UsersPage() {
   const [showEditPassword, setShowEditPassword] = useState(false);
 
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
-  const [selectedGradeIds, setSelectedGradeIds] = useState<string[]>([]);
-  const [newSubscription, setNewSubscription] = useState({ gradeId: '', expiresAt: '' });
+  const [editingSubId, setEditingSubId] = useState<string | null>(null);
+  const [editingExpiresAt, setEditingExpiresAt] = useState<string>('');
 
   useEffect(() => {
     fetchUsers();
@@ -210,55 +210,11 @@ export default function UsersPage() {
   const handleSubscriptionClick = async (user: User) => {
     setSelectedUser(user);
     await fetchSubscriptions(user.id);
-    await fetchUserPermissions(user.id);
     setShowSubscriptionModal(true);
   };
 
-  const fetchUserPermissions = async (userId: string) => {
-    try {
-      const res = await fetch(`/api/admin/users/${userId}/grades`);
-      const data = await res.json();
-      setSelectedGradeIds(data.userGrades?.map((g: any) => g.gradeId) || []);
-    } catch (error) {
-      console.error('Error fetching user grades:', error);
-      setSelectedGradeIds([]);
-    }
-  };
-
-  const handleGradeToggle = (gradeId: string) => {
-    setSelectedGradeIds((prev) =>
-      prev.includes(gradeId)
-        ? prev.filter((id) => id !== gradeId)
-        : [...prev, gradeId]
-    );
-  };
-
-  const handleSavePermissions = async () => {
+  const handleAddSubscription = async (gradeId: string) => {
     if (!selectedUser) return;
-
-    try {
-      const res = await fetch(`/api/admin/users/${selectedUser.id}/grades`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gradeIds: selectedGradeIds }),
-      });
-
-      if (res.ok) {
-        alert('权限更新成功');
-      } else {
-        alert('更新失败');
-      }
-    } catch (error) {
-      console.error('Error updating permissions:', error);
-      alert('更新失败');
-    }
-  };
-
-  const handleAddSubscription = async () => {
-    if (!selectedUser || !newSubscription.gradeId || !newSubscription.expiresAt) {
-      alert('请填写完整信息');
-      return;
-    }
 
     try {
       const res = await fetch('/api/admin/subscriptions', {
@@ -266,15 +222,13 @@ export default function UsersPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId: selectedUser.id,
-          gradeId: newSubscription.gradeId,
-          expiresAt: newSubscription.expiresAt,
-          status: 'active',
+          gradeId,
         }),
       });
 
       if (res.ok) {
-        alert('订阅添加成功');
-        setNewSubscription({ gradeId: '', expiresAt: '' });
+        const data = await res.json();
+        alert(`订阅成功！有效期至 ${new Date(data.expiresAt * 1000).toLocaleDateString('zh-CN')}`);
         fetchSubscriptions(selectedUser.id);
       } else {
         alert('添加失败');
@@ -286,13 +240,13 @@ export default function UsersPage() {
   };
 
   const handleDeleteSubscription = async (subscriptionId: string) => {
+    if (!confirm('确定要删除此订阅吗？')) return;
     try {
       const res = await fetch(`/api/admin/subscriptions/${subscriptionId}`, {
         method: 'DELETE',
       });
 
       if (res.ok && selectedUser) {
-        alert('订阅删除成功');
         fetchSubscriptions(selectedUser.id);
       } else {
         alert('删除失败');
@@ -303,8 +257,48 @@ export default function UsersPage() {
     }
   };
 
-  const formatDate = (date: Date) => {
-    return new Date(date).toLocaleString('zh-CN', {
+  const handleUpdateExpiry = async (subscriptionId: string, expiresAt: number) => {
+    try {
+      const res = await fetch(`/api/admin/subscriptions/${subscriptionId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ expiresAt }),
+      });
+
+      if (res.ok && selectedUser) {
+        fetchSubscriptions(selectedUser.id);
+        setEditingSubId(null);
+      } else {
+        alert('更新失败');
+      }
+    } catch (error) {
+      console.error('Error updating subscription:', error);
+      alert('更新失败');
+    }
+  };
+
+  const startEditingExpiry = (sub: Subscription) => {
+    setEditingSubId(sub.id);
+    // Convert unix timestamp to date string for the date input
+    const d = new Date(typeof sub.expiresAt === 'number' ? sub.expiresAt * 1000 : sub.expiresAt);
+    setEditingExpiresAt(d.toISOString().split('T')[0]);
+  };
+
+  const quickSetExpiry = (months: number) => {
+    const now = new Date();
+    now.setMonth(now.getMonth() + months);
+    setEditingExpiresAt(now.toISOString().split('T')[0]);
+  };
+
+  const saveExpiry = () => {
+    if (!editingSubId || !editingExpiresAt) return;
+    const ts = Math.floor(new Date(editingExpiresAt + 'T23:59:59').getTime() / 1000);
+    handleUpdateExpiry(editingSubId, ts);
+  };
+
+  const formatDate = (date: Date | number) => {
+    const d = typeof date === 'number' ? new Date(date * 1000) : new Date(date);
+    return d.toLocaleString('zh-CN', {
       month: '2-digit',
       day: '2-digit',
       hour: '2-digit',
@@ -312,8 +306,9 @@ export default function UsersPage() {
     });
   };
 
-  const isExpired = (date: Date) => {
-    return new Date(date) < new Date();
+  const isExpired = (date: Date | number) => {
+    const d = typeof date === 'number' ? new Date(date * 1000) : new Date(date);
+    return d < new Date();
   };
 
   return (
@@ -611,102 +606,135 @@ export default function UsersPage() {
             </div>
 
             <div className="p-6 overflow-y-auto max-h-[60vh]">
-              {/* Grade Permissions */}
+              {/* Grade Subscription Config */}
               <div className="mb-6">
-                <h4 className="font-medium text-gray-800 mb-3">年级权限配置</h4>
-                <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto">
-                  {allGrades.map((grade) => (
-                    <label
-                      key={grade.id}
-                      className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer ${
-                        selectedGradeIds.includes(grade.id)
-                          ? 'bg-indigo-50 border border-indigo-200'
-                          : 'bg-gray-50 hover:bg-gray-100'
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedGradeIds.includes(grade.id)}
-                        onChange={() => handleGradeToggle(grade.id)}
-                        className="rounded text-indigo-600"
-                      />
-                      <span className="text-sm">{grade.name} ({grade.subjectName})</span>
-                    </label>
-                  ))}
-                </div>
-                <button
-                  onClick={handleSavePermissions}
-                  className="mt-3 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition text-sm"
-                >
-                  保存权限
-                </button>
-              </div>
-
-              {/* Subscriptions */}
-              <div>
-                <h4 className="font-medium text-gray-800 mb-3">课程订阅列表</h4>
-
-                {/* Add Subscription */}
-                <div className="bg-gray-50 rounded-lg p-4 mb-4">
-                  <p className="text-sm font-medium text-gray-700 mb-2">添加订阅</p>
-                  <div className="flex gap-2">
-                    <select
-                      value={newSubscription.gradeId}
-                      onChange={(e) => setNewSubscription({ ...newSubscription, gradeId: e.target.value })}
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                    >
-                      <option value="">选择年级</option>
-                      {allGrades.map((grade) => (
-                        <option key={grade.id} value={grade.id}>
-                          {grade.name} ({grade.subjectName})
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      type="date"
-                      value={newSubscription.expiresAt}
-                      onChange={(e) => setNewSubscription({ ...newSubscription, expiresAt: e.target.value })}
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                    />
-                    <button
-                      onClick={handleAddSubscription}
-                      className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm"
-                    >
-                      添加
-                    </button>
-                  </div>
-                </div>
-
-                {/* Subscription List */}
+                <h4 className="font-medium text-gray-800 mb-1">年级权限配置</h4>
+                <p className="text-sm text-gray-500 mb-3">勾选年级自动创建订阅（默认6个月），取消勾选删除订阅</p>
                 <div className="space-y-2">
-                  {subscriptions.length === 0 ? (
-                    <p className="text-gray-500 text-center py-4">暂无订阅</p>
-                  ) : (
-                    subscriptions.map((sub) => (
-                      <div key={sub.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                        <div>
-                          <p className="font-medium text-gray-800">{sub.gradeName || '未知年级'}</p>
-                          <p className="text-sm text-gray-500">
-                            到期: {formatDate(sub.expiresAt)}
-                            {isExpired(sub.expiresAt) && <span className="text-red-500 ml-2">(已过期)</span>}
-                          </p>
+                  {allGrades.map((grade) => {
+                    const sub = subscriptions.find((s) => s.gradeId === grade.id);
+                    const isChecked = !!sub;
+                    const isEditing = editingSubId === sub?.id;
+                    return (
+                      <div
+                        key={grade.id}
+                        className={`rounded-lg border transition-colors ${
+                          isChecked
+                            ? isExpired(sub!.expiresAt) ? 'border-red-200 bg-red-50' : 'border-indigo-200 bg-indigo-50'
+                            : 'border-gray-200 bg-gray-50'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 p-3">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => {
+                              if (isChecked && sub) {
+                                handleDeleteSubscription(sub.id);
+                              } else {
+                                handleAddSubscription(grade.id);
+                              }
+                            }}
+                            className="rounded text-indigo-600"
+                          />
+                          <span className="text-sm font-medium">{grade.name}</span>
+                          {grade.subjectName && (
+                            <span className="text-xs text-gray-500">({grade.subjectName})</span>
+                          )}
+                          {isChecked && sub && (
+                            <span className={`ml-auto text-xs ${isExpired(sub.expiresAt) ? 'text-red-500' : 'text-green-600'}`}>
+                              {isExpired(sub.expiresAt) ? '已过期' : `到期: ${formatDate(sub.expiresAt)}`}
+                            </span>
+                          )}
+                          {isChecked && sub && !isEditing && (
+                            <button
+                              onClick={() => startEditingExpiry(sub)}
+                              className="ml-1 text-xs px-2 py-0.5 rounded bg-white border border-gray-300 text-gray-600 hover:bg-gray-100"
+                            >
+                              调整时间
+                            </button>
+                          )}
+                          {isChecked && sub && (
+                            <button
+                              onClick={() => handleDeleteSubscription(sub.id)}
+                              className="ml-1 text-xs px-2 py-0.5 rounded bg-red-50 border border-red-200 text-red-600 hover:bg-red-100"
+                            >
+                              删除
+                            </button>
+                          )}
                         </div>
-                        <button
-                          onClick={() => handleDeleteSubscription(sub.id)}
-                          className="px-3 py-1 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition text-sm"
-                        >
-                          删除
-                        </button>
+                        {isEditing && sub && (
+                          <div className="px-3 pb-3 border-t border-indigo-100 pt-3">
+                            <div className="flex items-center gap-2 mb-2">
+                              <input
+                                type="date"
+                                value={editingExpiresAt}
+                                onChange={(e) => setEditingExpiresAt(e.target.value)}
+                                className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm"
+                              />
+                              <button
+                                onClick={saveExpiry}
+                                className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700"
+                              >
+                                保存
+                              </button>
+                              <button
+                                onClick={() => setEditingSubId(null)}
+                                className="px-3 py-1.5 text-gray-600 hover:bg-gray-100 rounded-lg text-sm"
+                              >
+                                取消
+                              </button>
+                            </div>
+                            <div className="flex gap-1.5 flex-wrap">
+                              <span className="text-xs text-gray-500 leading-7">快捷设置:</span>
+                              {[
+                                { label: '+3个月', months: 3 },
+                                { label: '+6个月', months: 6 },
+                                { label: '+1年', months: 12 },
+                                { label: '+2年', months: 24 },
+                              ].map((opt) => (
+                                <button
+                                  key={opt.months}
+                                  onClick={() => quickSetExpiry(opt.months)}
+                                  className="text-xs px-2.5 py-1 rounded-full border border-indigo-200 text-indigo-700 hover:bg-indigo-100"
+                                >
+                                  {opt.label}
+                                </button>
+                              ))}
+                              <button
+                                onClick={() => {
+                                  // Set to end of current year
+                                  const d = new Date();
+                                  d.setMonth(11, 31);
+                                  setEditingExpiresAt(d.toISOString().split('T')[0]);
+                                }}
+                                className="text-xs px-2.5 py-1 rounded-full border border-green-200 text-green-700 hover:bg-green-100"
+                              >
+                                今年底
+                              </button>
+                              <button
+                                onClick={() => {
+                                  const d = new Date();
+                                  d.setFullYear(d.getFullYear() + 1, 11, 31);
+                                  setEditingExpiresAt(d.toISOString().split('T')[0]);
+                                }}
+                                className="text-xs px-2.5 py-1 rounded-full border border-green-200 text-green-700 hover:bg-green-100"
+                              >
+                                明年底
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    ))
-                  )}
+                    );
+                  })}
                 </div>
               </div>
             </div>
 
             <div className="p-6 border-t border-gray-100 flex justify-end">
               <button
-                onClick={() => setShowSubscriptionModal(false)}
+                onClick={() => { setShowSubscriptionModal(false); setEditingSubId(null); }}
                 className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition"
               >
                 关闭

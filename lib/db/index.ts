@@ -293,6 +293,26 @@ async function ensurePgTables(client: any) {
       console.error('Error migrating grades table:', e);
     }
 
+    // Migrate: add register_ip and last_login_ip to users
+    try {
+      const usersColumnsResult = await client`SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users'`;
+      const usersColumns = usersColumnsResult.map((row: any) => row.column_name);
+      if (!usersColumns.includes('register_ip')) {
+        console.log('Adding register_ip column to users table...');
+        await client`ALTER TABLE users ADD COLUMN register_ip TEXT`;
+      }
+      if (!usersColumns.includes('last_login_ip')) {
+        console.log('Adding last_login_ip column to users table...');
+        await client`ALTER TABLE users ADD COLUMN last_login_ip TEXT`;
+      }
+      if (!usersColumns.includes('last_visit_ip')) {
+        console.log('Adding last_visit_ip column to users table...');
+        await client`ALTER TABLE users ADD COLUMN last_visit_ip TEXT`;
+      }
+    } catch (e) {
+      console.error('Error migrating users table:', e);
+    }
+
     // Create user_points table
     try {
       const userPointsResult = await client`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'user_points'`;

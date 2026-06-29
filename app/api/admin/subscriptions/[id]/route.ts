@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, initDb } from '@/lib/db';
-import { subscriptions, eq } from '@/lib/db/schema';
+import { subscriptions, userGrades, eq, and } from '@/lib/db/schema';
 
 let dbInitialized = false;
 
@@ -54,9 +54,14 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     const db = await ensureDb();
 
-    const updateData: any = {};
+    const updateData: any = { updatedAt: Math.floor(Date.now() / 1000) };
     if (body.status !== undefined) updateData.status = body.status;
-    if (body.expiresAt !== undefined) updateData.expiresAt = new Date(body.expiresAt);
+    if (body.expiresAt !== undefined) {
+      // expiresAt is a unix timestamp (integer seconds)
+      updateData.expiresAt = typeof body.expiresAt === 'number'
+        ? body.expiresAt
+        : Math.floor(new Date(body.expiresAt).getTime() / 1000);
+    }
     if (body.amount !== undefined) updateData.amount = body.amount;
 
     await db.update(subscriptions)
@@ -83,11 +88,27 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
 
     const db = await ensureDb();
 
-    await db.update(subscriptions)
-      .set({
-        status: 'expired',
-      })
+    // Get subscription info before deleting
+    const subResult = await db.select({ userId: subscriptions.userId, gradeId: subscriptions.gradeId })
+      .from(subscriptions)
       .where(eq(subscriptions.id, id));
+
+    // Delete subscription
+    await db.delete(subscriptions)
+      .where(eq(subscriptions.id, id));
+
+    // Also remove from user_grades
+    if (subResult.length > 0) {
+      try {
+        await db.delete(userGrades)
+          .where(and(
+            eq(userGrades.userId, subResult[0].userId),
+            eq(userGrades.gradeId, subResult[0].gradeId),
+          ));
+      } catch (e) {
+        console.error('Error removing user_grades:', e);
+      }
+    }
 
     return NextResponse.json({ success: true, message: 'Subscription deleted successfully' });
   } catch (error) {

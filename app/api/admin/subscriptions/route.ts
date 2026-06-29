@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, initDb } from '@/lib/db';
-import { subscriptions, users, grades, textbooks, subjects, eq, and, desc } from '@/lib/db/schema';
+import { subscriptions, users, grades, textbooks, subjects, courses, eq, and, desc } from '@/lib/db/schema';
 
 let dbInitialized = false;
 
@@ -60,12 +60,13 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/admin/subscriptions
- * Create a new subscription
+ * Create a subscription for a grade (auto-sets 6-month expiry)
+ * Also auto-creates course-level subscriptions for all courses in the grade
  */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { userId, gradeId, orderNo, tradeNo, amount, status, expiresAt } = body;
+    const { userId, gradeId, expiresAt } = body;
 
     if (!userId || !gradeId) {
       return NextResponse.json(
@@ -77,23 +78,80 @@ export async function POST(request: NextRequest) {
     const db = await ensureDb();
 
     const now = Math.floor(Date.now() / 1000);
+    // Default expiry: 6 months from now
+    const SIX_MONTHS = 6 * 30 * 24 * 60 * 60;
+    const subscriptionExpiresAt = expiresAt
+      ? Math.floor(new Date(expiresAt).getTime() / 1000)
+      : now + SIX_MONTHS;
+
+    // Check if subscription already exists for this user+grade
+    const existing = await db.select({ id: subscriptions.id })
+      .from(subscriptions)
+      .where(and(
+        eq(subscriptions.userId, userId),
+        eq(subscriptions.gradeId, gradeId),
+      ));
+
+    if (existing.length > 0) {
+      // Update existing subscription's expiry
+      await db.update(subscriptions)
+        .set({
+          status: 'paid',
+          expiresAt: subscriptionExpiresAt,
+          paidAt: now,
+          updatedAt: now,
+        })
+        .where(eq(subscriptions.id, existing[0].id));
+
+      return NextResponse.json({
+        success: true,
+        message: '订阅已更新',
+        expiresAt: subscriptionExpiresAt,
+      });
+    }
+
+    // Create new subscription
     const newSubscription = {
       userId,
       gradeId,
-      orderNo: orderNo || `ADMIN-${Date.now()}`,
-      tradeNo: tradeNo || '',
-      amount: amount || 0,
-      status: status || 'active',
+      orderNo: `ADMIN-${Date.now()}`,
+      tradeNo: '',
+      amount: 0,
+      status: 'paid',
       paidAt: now,
-      expiresAt: expiresAt ? Math.floor(new Date(expiresAt).getTime() / 1000) : now + 365 * 24 * 60 * 60,
+      expiresAt: subscriptionExpiresAt,
       createdAt: now,
     };
 
     await db.insert(subscriptions).values(newSubscription);
 
+    // Also update user_grades for permission check
+    try {
+      const { userGrades } = await import('@/lib/db/schema');
+      const existingGrade = await db.select({ id: userGrades.id })
+        .from(userGrades)
+        .where(and(
+          eq(userGrades.userId, userId),
+          eq(userGrades.gradeId, gradeId),
+        ));
+
+      if (existingGrade.length === 0) {
+        await db.insert(userGrades).values({
+          userId,
+          gradeId,
+          isFree: false,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+    } catch (e) {
+      console.error('Error updating user_grades:', e);
+    }
+
     return NextResponse.json({
       success: true,
-      message: 'Subscription created successfully',
+      message: '订阅创建成功',
+      expiresAt: subscriptionExpiresAt,
     });
   } catch (error) {
     console.error('Error creating subscription:', error);
