@@ -83,6 +83,85 @@ export default function AdventureContent() {
   const [treasureClaimed, setTreasureClaimed] = useState(false);
   const [treasureAlreadyClaimed, setTreasureAlreadyClaimed] = useState(false);
   const [treasureClaiming, setTreasureClaiming] = useState(false);
+
+  // User profile modal state
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [userPoints, setUserPoints] = useState(0);
+  const [userGradeProgress, setUserGradeProgress] = useState<{gradeName: string; completed: number; total: number}[]>([]);
+
+  const loadUserProfile = async () => {
+    const token = localStorage.getItem('token');
+    const userData = localStorage.getItem('user');
+    const u = userData ? JSON.parse(userData) : null;
+    if (!token || !u?.id) return;
+
+    try {
+      // Fetch points
+      const pointsRes = await fetch(`/api/user/points?userId=${u.id}`);
+      const pointsData = await pointsRes.json();
+      if (pointsData.success) {
+        setUserPoints(pointsData.totalPoints || 0);
+      }
+
+      // Fetch all grades
+      const textbooksRes = await fetch('/api/textbooks?subjectId=subject-math');
+      const textbooksData = await textbooksRes.json();
+      const textbooks = textbooksData.textbooks || [];
+      if (textbooks.length === 0) return;
+
+      const gradesRes = await fetch(`/api/grades?textbookId=${textbooks[0].id}`);
+      const gradesData = await gradesRes.json();
+      const allGrades = gradesData.grades || [];
+
+      // Fetch user subscriptions
+      let subscribedGradeIds: string[] = [];
+      try {
+        const subRes = await fetch('/api/user/subscriptions', {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+        const subData = await subRes.json();
+        if (subData.success) {
+          subscribedGradeIds = (subData.subscriptions || []).map((s: any) => s.gradeId);
+        }
+      } catch {}
+
+      // Filter grades: show subscribed grades, or 一年级 if no subscriptions
+      let targetGrades = allGrades;
+      if (subscribedGradeIds.length > 0) {
+        targetGrades = allGrades.filter((g: any) => subscribedGradeIds.includes(g.id));
+      } else {
+        // No subscriptions: show 一年级 only
+        targetGrades = allGrades.filter((g: any) => g.name?.includes('一年级'));
+      }
+
+      const progressList: {gradeName: string; completed: number; total: number}[] = [];
+      for (const grade of targetGrades) {
+        const coursesRes = await fetch(`/api/user/courses?gradeId=${grade.id}`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+        const coursesData = await coursesRes.json();
+        const courses = coursesData.courses || [];
+        if (courses.length === 0) continue;
+
+        const progressRes = await fetch('/api/user/progress', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ gradeId: grade.id }),
+        });
+        const progressData = await progressRes.json();
+        const progressMap = progressData.progress || {};
+
+        let completed = 0;
+        for (const course of courses) {
+          if (progressMap[course.id]?.completed) completed++;
+        }
+        progressList.push({ gradeName: grade.name, completed, total: courses.length });
+      }
+      setUserGradeProgress(progressList);
+    } catch (err) {
+      console.error('Failed to load user profile:', err);
+    }
+  };
   
   // Drag state
   const containerRef = useRef<HTMLDivElement>(null);
@@ -95,7 +174,9 @@ export default function AdventureContent() {
   const [validationError, setValidationError] = useState<string | null>(null);
 
   const MAP_WIDTH = 1200;
-  const MAP_HEIGHT = 1600;
+  const MIN_MAP_HEIGHT = 1600;
+  // Dynamic map height: each course needs ~200px vertical space, plus 300px for treasure
+  const MAP_HEIGHT = Math.max(MIN_MAP_HEIGHT, islands.length * 200 + 300);
 
   useEffect(() => {
     console.log('Adventure useEffect - subjectId:', subjectId, 'gradeId:', gradeId);
@@ -312,19 +393,6 @@ export default function AdventureContent() {
       const coursesData = await coursesRes.json();
       console.log('User courses response:', coursesData);
       
-      const positions = [
-        { x: 150, y: 1400 },
-        { x: 400, y: 1250 },
-        { x: 250, y: 1050 },
-        { x: 550, y: 900 },
-        { x: 350, y: 700 },
-        { x: 700, y: 600 },
-        { x: 500, y: 400 },
-        { x: 850, y: 350 },
-        { x: 650, y: 200 },
-        { x: 950, y: 150 },
-      ];
-      
       const courses = coursesData.courses || [];
       console.log('Courses found:', courses.length);
       
@@ -334,6 +402,16 @@ export default function AdventureContent() {
         setLoading(false);
         return;
       }
+
+      // Generate positions dynamically: zigzag path from bottom to top
+      const mapH = Math.max(MIN_MAP_HEIGHT, courses.length * 200 + 300);
+      const stepY = mapH / (courses.length + 1);
+      const positions = courses.map((_: any, index: number) => {
+        const y = mapH - stepY * (index + 1);
+        const x = index % 2 === 0 ? 150 + (index % 3) * 100 : 400 + (index % 3) * 100;
+        // Keep x within map bounds
+        return { x: Math.min(x, MAP_WIDTH - 150), y };
+      });
       
       // Fetch learning progress
       let progressMap: Record<string, { progress: number; completed: boolean; stars: number }> = {};
@@ -375,8 +453,8 @@ export default function AdventureContent() {
           completed: progress.completed,
           stars: progress.stars,
           isTrial,
-          x: positions[index % positions.length].x,
-          y: positions[index % positions.length].y,
+          x: positions[index].x,
+          y: positions[index].y,
           prerequisites,
           unlocked,
           classroomId: (course as Course & { classroomId?: string }).classroomId,
@@ -515,32 +593,24 @@ export default function AdventureContent() {
             
             {/* User Profile / Login */}
             {isLoggedIn && user ? (
-              <div className="relative">
-                <button className="p-2 bg-white/10 backdrop-blur-sm rounded-lg hover:bg-white/20 transition flex items-center gap-2">
-                  {user.avatarUrl ? (
-                    <img 
-                      src={sanitizeImageUrl(user.avatarUrl)} 
-                      alt={user.nickname} 
-                      className="w-8 h-8 rounded-full object-cover"
-                      crossOrigin="anonymous"
-                    />
-                  ) : (
-                    <div className="w-8 h-8 bg-gradient-to-br from-indigo-400 to-purple-500 rounded-full flex items-center justify-center text-white text-sm font-bold">
-                      {user.nickname?.[0] || '?'}
-                    </div>
-                  )}
-                  <span className="text-white text-sm font-medium">{user.nickname || '用户'}</span>
-                </button>
-                {/* Logout menu */}
-                <div className="absolute right-0 top-full mt-2 w-32 bg-white rounded-lg shadow-xl border border-gray-100 py-2 z-50">
-                  <button
-                    onClick={logout}
-                    className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 transition"
-                  >
-                    退出登录
-                  </button>
-                </div>
-              </div>
+              <button
+                onClick={() => { loadUserProfile(); setShowProfileModal(true); }}
+                className="p-2 bg-white/10 backdrop-blur-sm rounded-lg hover:bg-white/20 transition flex items-center gap-2"
+              >
+                {user.avatarUrl ? (
+                  <img 
+                    src={sanitizeImageUrl(user.avatarUrl)} 
+                    alt={user.nickname} 
+                    className="w-8 h-8 rounded-full object-cover"
+                    crossOrigin="anonymous"
+                  />
+                ) : (
+                  <div className="w-8 h-8 bg-gradient-to-br from-indigo-400 to-purple-500 rounded-full flex items-center justify-center text-white text-sm font-bold">
+                    {user.nickname?.[0] || '?'}
+                  </div>
+                )}
+                <span className="text-white text-sm font-medium">{user.nickname || '用户'}</span>
+              </button>
             ) : (
               <button
                 onClick={() => setShowLoginModal(true)}
@@ -647,7 +717,7 @@ export default function AdventureContent() {
               const lastIsland = islands[islands.length - 1];
               const treasureX = lastIsland.x + 150;
               const treasureY = lastIsland.y - 80;
-              const canOpenTreasure = gradeInfo?.id === 'grade-rjb-1a' ? true : islands.every(i => i.completed);
+              const canOpenTreasure = islands.every(i => i.completed);
               return (
                 <path
                   d={`M ${lastIsland.x} ${lastIsland.y} Q ${(lastIsland.x + treasureX) / 2} ${Math.min(lastIsland.y, treasureY) - 50} ${treasureX} ${treasureY}`}
@@ -727,7 +797,7 @@ export default function AdventureContent() {
             onClick={() => {
               const allCompleted = islands.every(i => i.completed);
               // TODO: 临时测试 - 一年级上册跳过完成检查，测试完成后改回 allCompleted
-              const canOpenTreasure = gradeInfo?.id === 'grade-rjb-1a' ? true : allCompleted;
+              const canOpenTreasure = allCompleted;
               if (canOpenTreasure && gradeInfo) {
                 // Check if already claimed
                 const token = localStorage.getItem('token');
@@ -754,15 +824,15 @@ export default function AdventureContent() {
                 }
               }
             }}
-            className={`absolute ${(gradeInfo?.id === 'grade-rjb-1a' ? true : islands.every(i => i.completed)) ? 'cursor-pointer' : 'cursor-default'}`}
+            className={`absolute ${(islands.every(i => i.completed)) ? 'cursor-pointer' : 'cursor-default'}`}
             style={{ 
               left: islands[islands.length - 1].x + 150, 
               top: islands[islands.length - 1].y - 80,
               transform: 'translate(-50%, -50%)'
             }}
           >
-            <div className={`text-6xl drop-shadow-2xl ${(gradeInfo?.id === 'grade-rjb-1a' ? true : islands.every(i => i.completed)) ? 'animate-bounce' : ''}`}>
-              {(gradeInfo?.id === 'grade-rjb-1a' ? true : islands.every(i => i.completed)) ? '🎁' : '📦'}
+            <div className={`text-6xl drop-shadow-2xl ${(islands.every(i => i.completed)) ? 'animate-bounce' : ''}`}>
+              {(islands.every(i => i.completed)) ? '🎁' : '📦'}
             </div>
             <div className="mt-2 text-white text-sm whitespace-nowrap bg-black/50 backdrop-blur-sm px-3 py-1 rounded-lg">
               {islands.every(i => i.completed) ? '终极宝藏' : '终极宝藏'}
@@ -837,6 +907,72 @@ export default function AdventureContent() {
               frameBorder="0"
               allowFullScreen
             />
+          </div>
+        </div>
+      )}
+
+      {/* User Profile Modal */}
+      {showProfileModal && isLoggedIn && user && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-5 max-w-sm w-full shadow-2xl max-h-[80vh] overflow-y-auto">
+            {/* Header */}
+            <div className="flex items-center gap-3 mb-4">
+              {user.avatarUrl ? (
+                <img src={sanitizeImageUrl(user.avatarUrl)} alt={user.nickname} className="w-12 h-12 rounded-full object-cover" crossOrigin="anonymous" />
+              ) : (
+                <div className="w-12 h-12 bg-gradient-to-br from-indigo-400 to-purple-500 rounded-full flex items-center justify-center text-white text-xl font-bold">
+                  {user.nickname?.[0] || '?'}
+                </div>
+              )}
+              <div>
+                <div className="font-bold text-gray-800">{user.nickname || '用户'}</div>
+                <div className="text-sm text-gray-500">{user.phone || ''}</div>
+              </div>
+            </div>
+
+            {/* Points */}
+            <div className="bg-gradient-to-r from-amber-50 to-yellow-50 border border-amber-200 rounded-xl p-4 mb-4">
+              <div className="text-sm text-amber-600 mb-1">我的积分</div>
+              <div className="text-3xl font-bold text-amber-500">{userPoints}</div>
+            </div>
+
+            {/* Grade Progress */}
+            <div className="mb-4">
+              <div className="text-sm font-medium text-gray-700 mb-2">学习进度</div>
+              {userGradeProgress.length === 0 ? (
+                <div className="text-sm text-gray-400">暂无学习记录</div>
+              ) : (
+                <div className="space-y-2">
+                  {userGradeProgress.map((gp) => (
+                    <div key={gp.gradeName} className="flex items-center gap-2">
+                      <span className="text-sm text-gray-600 w-20 shrink-0">{gp.gradeName}</span>
+                      <div className="flex-1 bg-gray-100 rounded-full h-3 overflow-hidden">
+                        <div
+                          className="bg-gradient-to-r from-indigo-400 to-purple-500 h-full rounded-full transition-all"
+                          style={{ width: gp.total > 0 ? `${(gp.completed / gp.total) * 100}%` : '0%' }}
+                        />
+                      </div>
+                      <span className="text-xs text-gray-500 w-10 text-right">{gp.completed}/{gp.total}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Logout */}
+            <button
+              onClick={() => { setShowProfileModal(false); logout(); }}
+              className="w-full py-2.5 bg-red-50 text-red-600 rounded-xl font-medium hover:bg-red-100 transition"
+            >
+              退出登录
+            </button>
+
+            <button
+              onClick={() => setShowProfileModal(false)}
+              className="w-full mt-2 py-2 text-gray-400 text-sm hover:text-gray-600 transition"
+            >
+              关闭
+            </button>
           </div>
         </div>
       )}
