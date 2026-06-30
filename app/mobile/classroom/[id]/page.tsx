@@ -370,6 +370,7 @@ export default function MobileClassroomPage() {
             <SlideRenderer
               scene={currentScene}
               spotlightTarget={activeSpotlight?.elementId || null}
+              laserTarget={activeLaser?.elementId || null}
             />
 
             {/* 白板覆盖层 */}
@@ -512,9 +513,10 @@ export default function MobileClassroomPage() {
 interface SlideRendererProps {
   scene: SceneData;
   spotlightTarget: string | null;
+  laserTarget: string | null;
 }
 
-function SlideRenderer({ scene, spotlightTarget }: SlideRendererProps) {
+function SlideRenderer({ scene, spotlightTarget, laserTarget }: SlideRendererProps) {
   console.log('[SlideRenderer] Scene type:', scene.type);
   console.log('[SlideRenderer] Scene title:', scene.title);
   console.log('[SlideRenderer] Scene content:', scene.content);
@@ -573,6 +575,8 @@ function SlideRenderer({ scene, spotlightTarget }: SlideRendererProps) {
             key={element.id}
             element={element}
             spotlightTarget={spotlightTarget}
+            laserTarget={laserTarget}
+            hasSpotlight={!!spotlightTarget}
           />
         ))}
       </div>
@@ -1126,28 +1130,61 @@ function patchHtmlForIframe(html: string): string {
   return iframeCss + html;
 }
 
+// ==================== Laser Dot Indicator ====================
+
+function LaserDot() {
+  return (
+    <div className="absolute -top-1 -right-1 pointer-events-none">
+      {/* Pulsing ring */}
+      <div
+        className="absolute inset-0 rounded-full animate-ping"
+        style={{
+          width: 12,
+          height: 12,
+          backgroundColor: 'rgba(255, 59, 48, 0.4)',
+        }}
+      />
+      {/* Red dot core */}
+      <div
+        className="rounded-full"
+        style={{
+          width: 8,
+          height: 8,
+          backgroundColor: '#ff3b30',
+          boxShadow: '0 0 6px 2px rgba(255, 59, 48, 0.6)',
+        }}
+      />
+    </div>
+  );
+}
+
 // ==================== Slide Element Renderer ====================
 
 interface SlideElementProps {
   element: PPTElement;
   spotlightTarget: string | null;
+  laserTarget: string | null;
+  hasSpotlight: boolean;
 }
 
-function SlideElement({ element, spotlightTarget }: SlideElementProps) {
+function SlideElement({ element, spotlightTarget, laserTarget, hasSpotlight }: SlideElementProps) {
   const isSpotlighted = spotlightTarget === element.id;
+  const isLasered = laserTarget === element.id;
+  // Dim non-spotlighted elements when spotlight is active
+  const dimmed = hasSpotlight && !isSpotlighted;
 
   // Type-specific rendering - use pixel values directly like OpenMAIC
   switch (element.type) {
     case 'text':
-      return <TextElement element={element as PPTTextElement} isSpotlighted={isSpotlighted} />;
+      return <TextElement element={element as PPTTextElement} isSpotlighted={isSpotlighted} isLasered={isLasered} dimmed={dimmed} />;
     case 'shape':
-      return <ShapeElement element={element as PPTShapeElement} isSpotlighted={isSpotlighted} />;
+      return <ShapeElement element={element as PPTShapeElement} isSpotlighted={isSpotlighted} isLasered={isLasered} dimmed={dimmed} />;
     case 'image':
-      return <ImageElement element={element as PPTImageElement} isSpotlighted={isSpotlighted} />;
+      return <ImageElement element={element as PPTImageElement} isSpotlighted={isSpotlighted} isLasered={isLasered} dimmed={dimmed} />;
     case 'line':
-      return <LineElement element={element as PPTLineElement} isSpotlighted={isSpotlighted} />;
+      return <LineElement element={element as PPTLineElement} isSpotlighted={isSpotlighted} isLasered={isLasered} dimmed={dimmed} />;
     case 'latex':
-      return <LatexElement element={element as PPTLatexElement} isSpotlighted={isSpotlighted} />;
+      return <LatexElement element={element as PPTLatexElement} isSpotlighted={isSpotlighted} isLasered={isLasered} dimmed={dimmed} />;
     default:
       return null;
   }
@@ -1158,9 +1195,11 @@ function SlideElement({ element, spotlightTarget }: SlideElementProps) {
 interface TextElementProps {
   element: PPTTextElement;
   isSpotlighted: boolean;
+  isLasered: boolean;
+  dimmed: boolean;
 }
 
-function TextElement({ element, isSpotlighted }: TextElementProps) {
+function TextElement({ element, isSpotlighted, isLasered, dimmed }: TextElementProps) {
   const style: React.CSSProperties = {
     position: 'absolute',
     top: `${element.top}px`,
@@ -1173,21 +1212,23 @@ function TextElement({ element, isSpotlighted }: TextElementProps) {
     fontSize: element.textType === 'title' ? '32px' : element.textType === 'subtitle' ? '24px' : '18px',
     fontWeight: element.textType === 'title' || element.textType === 'subtitle' ? 'bold' : 'normal',
     lineHeight: element.lineHeight || 1.5,
-    opacity: element.opacity ?? 1,
+    opacity: dimmed ? 0.3 : (element.opacity ?? 1),
     backgroundColor: element.fill,
     padding: '10px',
     boxSizing: 'border-box',
     overflow: 'hidden',
     filter: isSpotlighted ? 'brightness(1.2)' : undefined,
-    transition: 'filter 0.3s ease',
+    transition: 'all 0.3s ease',
   };
 
   return (
     <div
       style={style}
-      className={isSpotlighted ? 'ring-4 ring-yellow-400 rounded' : ''}
-      dangerouslySetInnerHTML={{ __html: element.content || '' }}
-    />
+      className={`${isSpotlighted ? 'ring-4 ring-yellow-400 rounded' : ''} ${isLasered ? 'ring-4 ring-red-500 rounded' : ''} relative`}
+    >
+      <div dangerouslySetInnerHTML={{ __html: element.content || '' }} />
+      {isLasered && <LaserDot />}
+    </div>
   );
 }
 
@@ -1196,9 +1237,11 @@ function TextElement({ element, isSpotlighted }: TextElementProps) {
 interface ShapeElementProps {
   element: PPTShapeElement;
   isSpotlighted: boolean;
+  isLasered: boolean;
+  dimmed: boolean;
 }
 
-function ShapeElement({ element, isSpotlighted }: ShapeElementProps) {
+function ShapeElement({ element, isSpotlighted, isLasered, dimmed }: ShapeElementProps) {
   const style: React.CSSProperties = {
     position: 'absolute',
     top: `${element.top}px`,
@@ -1210,15 +1253,18 @@ function ShapeElement({ element, isSpotlighted }: ShapeElementProps) {
     border: element.outline ? `${element.outline.width}px ${element.outline.style} ${element.outline.color}` : undefined,
     borderRadius: '4px',
     boxShadow: element.shadow ? `${element.shadow.h}px ${element.shadow.v}px ${element.shadow.blur}px ${element.shadow.color}` : undefined,
+    opacity: dimmed ? 0.3 : undefined,
     filter: isSpotlighted ? 'brightness(1.2)' : undefined,
-    transition: 'filter 0.3s ease',
+    transition: 'all 0.3s ease',
   };
 
   return (
     <div
       style={style}
-      className={isSpotlighted ? 'ring-4 ring-yellow-400' : ''}
-    />
+      className={`${isSpotlighted ? 'ring-4 ring-yellow-400' : ''} ${isLasered ? 'ring-4 ring-red-500' : ''} relative`}
+    >
+      {isLasered && <LaserDot />}
+    </div>
   );
 }
 
@@ -1227,9 +1273,11 @@ function ShapeElement({ element, isSpotlighted }: ShapeElementProps) {
 interface ImageElementProps {
   element: PPTImageElement;
   isSpotlighted: boolean;
+  isLasered: boolean;
+  dimmed: boolean;
 }
 
-function ImageElement({ element, isSpotlighted }: ImageElementProps) {
+function ImageElement({ element, isSpotlighted, isLasered, dimmed }: ImageElementProps) {
   const style: React.CSSProperties = {
     position: 'absolute',
     top: `${element.top}px`,
@@ -1237,8 +1285,9 @@ function ImageElement({ element, isSpotlighted }: ImageElementProps) {
     width: `${element.width}px`,
     height: `${element.height}px`,
     transform: element.rotate ? `rotate(${element.rotate}deg)` : undefined,
+    opacity: dimmed ? 0.3 : undefined,
     filter: isSpotlighted ? 'brightness(1.2)' : undefined,
-    transition: 'filter 0.3s ease',
+    transition: 'all 0.3s ease',
   };
 
   const safeSrc = sanitizeImageUrl(element.src);
@@ -1246,7 +1295,7 @@ function ImageElement({ element, isSpotlighted }: ImageElementProps) {
   return (
     <div
       style={style}
-      className={isSpotlighted ? 'ring-4 ring-yellow-400' : ''}
+      className={`${isSpotlighted ? 'ring-4 ring-yellow-400' : ''} ${isLasered ? 'ring-4 ring-red-500' : ''} relative`}
     >
       <img
         src={safeSrc}
@@ -1258,6 +1307,7 @@ function ImageElement({ element, isSpotlighted }: ImageElementProps) {
         }}
         crossOrigin="anonymous"
       />
+      {isLasered && <LaserDot />}
     </div>
   );
 }
@@ -1267,9 +1317,11 @@ function ImageElement({ element, isSpotlighted }: ImageElementProps) {
 interface LatexElementProps {
   element: PPTLatexElement;
   isSpotlighted: boolean;
+  isLasered: boolean;
+  dimmed: boolean;
 }
 
-function LatexElement({ element, isSpotlighted }: LatexElementProps) {
+function LatexElement({ element, isSpotlighted, isLasered, dimmed }: LatexElementProps) {
   const style: React.CSSProperties = {
     position: 'absolute',
     top: `${element.top}px`,
@@ -1277,8 +1329,9 @@ function LatexElement({ element, isSpotlighted }: LatexElementProps) {
     width: `${element.width}px`,
     height: `${element.height}px`,
     transform: element.rotate ? `rotate(${element.rotate}deg)` : undefined,
+    opacity: dimmed ? 0.3 : undefined,
     filter: isSpotlighted ? 'brightness(1.2)' : undefined,
-    transition: 'filter 0.3s ease',
+    transition: 'all 0.3s ease',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1288,7 +1341,7 @@ function LatexElement({ element, isSpotlighted }: LatexElementProps) {
   return (
     <div
       style={style}
-      className={isSpotlighted ? 'ring-4 ring-yellow-400' : ''}
+      className={`${isSpotlighted ? 'ring-4 ring-yellow-400' : ''} ${isLasered ? 'ring-4 ring-red-500' : ''} relative`}
     >
       {element.html ? (
         <div
@@ -1321,6 +1374,7 @@ function LatexElement({ element, isSpotlighted }: LatexElementProps) {
       ) : (
         <span className="text-gray-500 text-sm">LaTeX</span>
       )}
+      {isLasered && <LaserDot />}
     </div>
   );
 }
@@ -1330,9 +1384,11 @@ function LatexElement({ element, isSpotlighted }: LatexElementProps) {
 interface LineElementProps {
   element: PPTLineElement;
   isSpotlighted: boolean;
+  isLasered: boolean;
+  dimmed: boolean;
 }
 
-function LineElement({ element, isSpotlighted }: LineElementProps) {
+function LineElement({ element, isSpotlighted, isLasered, dimmed }: LineElementProps) {
   const [x1, y1] = element.start;
   const [x2, y2] = element.end;
 
@@ -1343,7 +1399,9 @@ function LineElement({ element, isSpotlighted }: LineElementProps) {
     width: '100%',
     height: '100%',
     overflow: 'visible',
-    filter: isSpotlighted ? 'drop-shadow-[0_0_8px_rgba(255,255,0,0.8)]' : undefined,
+    opacity: dimmed ? 0.3 : undefined,
+    filter: isSpotlighted ? 'drop-shadow-[0_0_8px_rgba(255,255,0,0.8)]' : isLasered ? 'drop-shadow-[0_0_8px_rgba(255,59,48,0.8)]' : undefined,
+    transition: 'all 0.3s ease',
   };
 
   return (

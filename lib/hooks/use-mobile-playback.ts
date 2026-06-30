@@ -224,6 +224,7 @@ export function useMobilePlayback({
 
       case 'spotlight': {
         const spotlightAction = action as SpotlightAction;
+        console.log('[MobilePlayback] Processing spotlight action, elementId:', spotlightAction.elementId);
         setActiveSpotlight(spotlightAction);
         onSpotlight?.(spotlightAction);
         advanceToNext();
@@ -232,6 +233,7 @@ export function useMobilePlayback({
 
       case 'laser': {
         const laserAction = action as LaserAction;
+        console.log('[MobilePlayback] Processing laser action, elementId:', laserAction.elementId);
         setActiveLaser(laserAction);
         onLaserPointer?.(laserAction);
         advanceToNext();
