@@ -362,10 +362,10 @@ export default function MobileClassroomPage() {
         </div>
       </div>
 
-      {/* 主要内容区 - 幻灯片渲染 */}
-      <main className="flex-1 overflow-hidden p-3 bg-gray-100">
-        <div className="h-full flex items-center justify-center">
-          <div className="relative bg-white rounded-lg shadow-md overflow-hidden" style={{ width: '100%', maxHeight: 'calc(100vh - 200px)' }}>
+      {/* 主要内容区 - 幻灯片渲染 - 支持触摸滚动 */}
+      <main className="flex-1 overflow-y-auto overscroll-contain bg-gray-100" style={{ WebkitOverflowScrolling: 'touch' }}>
+        <div className="min-h-full flex items-center justify-center p-3 pb-16">
+          <div className="relative bg-white rounded-lg shadow-md overflow-hidden" style={{ width: '100%', minHeight: '100%' }}>
             {/* 幻灯片内容渲染 */}
             <SlideRenderer
               scene={currentScene}
@@ -395,22 +395,17 @@ export default function MobileClassroomPage() {
               </div>
             )}
 
-            {/* 朗读文本覆盖 */}
-            {lectureText && (
-              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4 pt-8">
-                <p className="text-white text-sm leading-relaxed">{lectureText}</p>
-              </div>
-            )}
+            {/* 朗读文本已隐藏 - 避免遮挡PPT内容 */}
           </div>
         </div>
       </main>
 
-      {/* 播放进度条 */}
+      {/* 悬浮播放进度条 */}
       {currentActions.length > 0 && (
-        <div className="shrink-0 px-4 py-2 bg-white border-t">
-          <div className="flex items-center gap-2 text-xs text-gray-500">
+        <div className="absolute bottom-16 left-0 right-0 px-4 py-1 z-20 pointer-events-none">
+          <div className="flex items-center gap-2 text-xs text-white drop-shadow-lg">
             <span>{currentActionIndex + 1} / {currentActions.length}</span>
-            <div className="flex-1 h-1 bg-gray-200 rounded-full overflow-hidden">
+            <div className="flex-1 h-1 bg-white/30 rounded-full overflow-hidden">
               <div
                 className="h-full bg-blue-500 transition-all duration-300"
                 style={{ width: `${((currentActionIndex + 1) / currentActions.length) * 100}%` }}
@@ -420,9 +415,9 @@ export default function MobileClassroomPage() {
         </div>
       )}
 
-      {/* AI 聊天面板（可折叠） */}
+      {/* AI 聊天面板（可折叠，浮动） */}
       {showChat && (
-        <div className="shrink-0 border-t bg-white max-h-48 overflow-y-auto">
+        <div className="absolute bottom-16 left-0 right-0 border-t bg-white/95 backdrop-blur-sm max-h-48 overflow-y-auto z-30">
           <div className="p-4">
             <h3 className="font-bold mb-3 flex items-center gap-2">
               <MessageCircleIcon size={18} />
@@ -445,8 +440,8 @@ export default function MobileClassroomPage() {
         </div>
       )}
 
-      {/* 底部播放控制栏 */}
-      <footer className="shrink-0 bg-white border-t px-4 py-3">
+      {/* 悬浮底部播放控制栏 */}
+      <footer className="absolute bottom-0 left-0 right-0 bg-white/90 backdrop-blur-sm border-t border-gray-200/50 px-4 py-2 z-20">
         <div className="flex items-center justify-between">
           {/* 上一个 */}
           <button
@@ -517,10 +512,6 @@ interface SlideRendererProps {
 }
 
 function SlideRenderer({ scene, spotlightTarget, laserTarget }: SlideRendererProps) {
-  console.log('[SlideRenderer] Scene type:', scene.type);
-  console.log('[SlideRenderer] Scene title:', scene.title);
-  console.log('[SlideRenderer] Scene content:', scene.content);
-  
   // Handle quiz scenes
   if (scene.type === 'quiz') {
     return <QuizRenderer scene={scene} />;
@@ -700,8 +691,8 @@ function QuizRenderer({ scene }: QuizRendererProps) {
     const message = pct >= 80 ? '太棒了！' : pct >= 60 ? '继续加油！' : '需要复习';
 
     return (
-      <div className="w-full h-full flex flex-col overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-3 bg-white border-b">
+      <div className="w-full min-h-full flex flex-col">
+        <div className="flex items-center justify-between px-4 py-3 bg-white border-b sticky top-0 z-10">
           <div className="flex items-center gap-2">
             <span className="text-green-500 text-lg">✓</span>
             <span className="font-semibold text-gray-800">测验报告</span>
@@ -803,8 +794,8 @@ function QuizRenderer({ scene }: QuizRendererProps) {
   }
 
   return (
-    <div className="w-full h-full flex flex-col overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-3 bg-white border-b">
+    <div className="w-full min-h-full flex flex-col">
+      <div className="flex items-center justify-between px-4 py-3 bg-white border-b sticky top-0 z-10">
         <div className="flex items-center gap-2">
           <span className="text-violet-500 text-lg">📝</span>
           <span className="font-semibold text-gray-800">答题中</span>
