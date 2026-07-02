@@ -252,24 +252,128 @@ export async function listStages(): Promise<StageListItem[]> {
   try {
     const stages = await db.stages.orderBy('updatedAt').reverse().toArray();
 
-    const stageList: StageListItem[] = await Promise.all(
-      stages.map(async (stage) => {
-        const sceneCount = await db.scenes.where('stageId').equals(stage.id).count();
+    // If IndexedDB has data, return it
+    if (stages.length > 0) {
+      const stageList: StageListItem[] = await Promise.all(
+        stages.map(async (stage) => {
+          const sceneCount = await db.scenes.where('stageId').equals(stage.id).count();
 
-        return {
-          id: stage.id,
-          name: stage.name,
-          description: stage.description,
+          return {
+            id: stage.id,
+            name: stage.name,
+            description: stage.description,
+            sceneCount,
+            createdAt: stage.createdAt,
+            updatedAt: stage.updatedAt,
+          };
+        }),
+      );
+
+      return stageList;
+    }
+
+    // IndexedDB is empty — try loading from server API
+    log.info('IndexedDB empty, loading classrooms from server...');
+    const serverStages = await listStagesFromServer();
+    return serverStages;
+  } catch (error) {
+    log.error('Failed to list stages:', error);
+    return [];
+  }
+}
+
+/**
+ * List stages from server-side storage (local files / R2 / Vercel Blob)
+ * Also hydrates full classroom data into IndexedDB
+ */
+async function listStagesFromServer(): Promise<StageListItem[]> {
+  try {
+    const res = await fetch('/api/admin/classrooms');
+    if (!res.ok) return [];
+    const data = await res.json();
+    const classrooms = data.classrooms || [];
+
+    // Hydrate into IndexedDB: load full data for each classroom
+    const stageList: StageListItem[] = [];
+    for (const c of classrooms) {
+      try {
+        // Write stage metadata
+        await db.stages.put({
+          id: c.id,
+          name: c.name || '未命名课堂',
+          description: c.description,
+          createdAt: c.createdAt ? new Date(c.createdAt).getTime() : Date.now(),
+          updatedAt: c.updatedAt ? new Date(c.updatedAt).getTime() : Date.now(),
+        });
+
+        // Check if scenes already exist in IndexedDB
+        const existingScenes = await db.scenes.where('stageId').equals(c.id).count();
+        if (existingScenes === 0) {
+          // Load full classroom data from server and hydrate scenes
+          try {
+            const detailRes = await fetch(`/api/classroom?id=${encodeURIComponent(c.id)}`);
+            if (detailRes.ok) {
+              const detailData = await detailRes.json();
+              if (detailData.classroom) {
+                const classroomData = detailData.classroom;
+                const stage = classroomData.stage || classroomData.data?.stage;
+                const scenes = classroomData.scenes || classroomData.data?.scenes || [];
+
+                if (stage) {
+                  await db.stages.update(c.id, {
+                    name: stage.name || c.name,
+                    description: stage.description || c.description,
+                    currentSceneId: scenes[0]?.id || null,
+                  });
+                }
+
+                for (const scene of scenes) {
+                  await db.scenes.put({
+                    id: scene.id,
+                    stageId: c.id,
+                    type: scene.type || scene.content?.type || 'slide',
+                    title: scene.title || '',
+                    order: scene.order ?? 0,
+                    content: scene.content,
+                    actions: scene.actions || [],
+                    createdAt: scene.createdAt || Date.now(),
+                    updatedAt: scene.updatedAt || Date.now(),
+                  });
+                }
+                log.info(`Hydrated ${scenes.length} scenes for ${c.id}`);
+              }
+            }
+          } catch (e) {
+            log.warn(`Failed to hydrate scenes for ${c.id}:`, e);
+          }
+        }
+
+        // Get actual scene count from IndexedDB
+        const sceneCount = await db.scenes.where('stageId').equals(c.id).count();
+        stageList.push({
+          id: c.id,
+          name: c.name || '未命名课堂',
+          description: c.description,
           sceneCount,
-          createdAt: stage.createdAt,
-          updatedAt: stage.updatedAt,
-        };
-      }),
-    );
+          createdAt: c.createdAt ? new Date(c.createdAt).getTime() : Date.now(),
+          updatedAt: c.updatedAt ? new Date(c.updatedAt).getTime() : Date.now(),
+        });
+      } catch (e) {
+        log.warn(`Failed to hydrate classroom ${c.id}:`, e);
+        stageList.push({
+          id: c.id,
+          name: c.name || '未命名课堂',
+          description: c.description,
+          sceneCount: c.sceneCount || 0,
+          createdAt: c.createdAt ? new Date(c.createdAt).getTime() : Date.now(),
+          updatedAt: c.updatedAt ? new Date(c.updatedAt).getTime() : Date.now(),
+        });
+      }
+    }
 
     return stageList;
   } catch (error) {
-    log.error('Failed to list stages:', error);
+    log.warn('Failed to load stages from server:', error);
     return [];
   }
 }

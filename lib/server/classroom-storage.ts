@@ -64,11 +64,67 @@ export function isValidClassroomId(id: string): boolean {
   return /^[a-zA-Z0-9_-]+$/.test(id);
 }
 
+/**
+ * Normalize classroom data from different storage formats:
+ * Format A (persistClassroom): {stage: {...}, scenes: [...], createdAt: "..."}
+ * Format B (server/folder): {id, name, data: {stage: {...}, scenes: [...]}}
+ */
+function normalizeClassroomData(raw: any, id: string): PersistedClassroomData | null {
+  if (!raw) return null;
+
+  // Format A: top-level stage and scenes
+  if (raw.stage && raw.scenes) {
+    return {
+      id: raw.id || id,
+      stage: raw.stage,
+      scenes: raw.scenes,
+      createdAt: raw.createdAt || new Date().toISOString(),
+    };
+  }
+
+  // Format B: nested in data.stage / data.scenes
+  if (raw.data && raw.data.stage && raw.data.scenes) {
+    return {
+      id: raw.id || id,
+      stage: raw.data.stage,
+      scenes: raw.data.scenes,
+      createdAt: raw.createdAt || new Date().toISOString(),
+    };
+  }
+
+  // Partial data: has stage but no scenes (or empty scenes)
+  if (raw.stage) {
+    return {
+      id: raw.id || id,
+      stage: raw.stage,
+      scenes: raw.scenes || [],
+      createdAt: raw.createdAt || new Date().toISOString(),
+    };
+  }
+
+  // Format B partial: has data.stage but data.scenes is missing/empty
+  if (raw.data && raw.data.stage) {
+    return {
+      id: raw.id || id,
+      stage: raw.data.stage,
+      scenes: raw.data.scenes || [],
+      createdAt: raw.createdAt || new Date().toISOString(),
+    };
+  }
+
+  return null;
+}
+
 export async function readClassroom(id: string): Promise<PersistedClassroomData | null> {
   const filePath = path.join(CLASSROOMS_DIR, `${id}.json`);
   try {
     const content = await fs.readFile(filePath, 'utf-8');
-    return JSON.parse(content) as PersistedClassroomData;
+    const raw = JSON.parse(content);
+    const result = normalizeClassroomData(raw, id);
+    if (result) {
+      console.log(`[readClassroom] ${id}: ${result.scenes?.length || 0} scenes, format=${raw.data ? 'server' : 'persist'}`);
+    }
+    return result;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
       return null;

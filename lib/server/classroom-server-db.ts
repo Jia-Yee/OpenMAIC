@@ -128,15 +128,18 @@ export async function getClassroomFromServer(id: string): Promise<PersistedClass
 
 /**
  * Get all classrooms from the database (for listing)
+ * In dev mode, also scans local filesystem for classrooms not in DB
  */
 export async function listClassroomsFromServer(): Promise<ClassroomListItem[]> {
+  const isDev = !process.env.VERCEL && process.env.NODE_ENV !== 'production';
   const db = await ensureDb();
 
+  // Get classrooms from PostgreSQL
   const result = await db.select()
     .from(classrooms)
     .orderBy(classrooms.updatedAt);
 
-  return result.map((row: Classroom) => ({
+  const dbItems: ClassroomListItem[] = result.map((row: Classroom) => ({
     id: row.id,
     name: row.name,
     description: row.description || 'AI 生成的交互式课堂',
@@ -145,6 +148,78 @@ export async function listClassroomsFromServer(): Promise<ClassroomListItem[]> {
     createdAt: row.createdAt ? new Date(row.createdAt * 1000).toISOString() : new Date().toISOString(),
     updatedAt: row.updatedAt ? new Date(row.updatedAt * 1000).toISOString() : new Date().toISOString(),
   }));
+
+  if (!isDev) {
+    return dbItems;
+  }
+
+  // Dev mode: also scan local filesystem for classrooms not in DB
+  const fs = await import('fs');
+  const path = await import('path');
+  const classroomsDir = path.join(process.cwd(), 'data', 'classrooms');
+
+  try {
+    await fs.promises.access(classroomsDir);
+  } catch {
+    return dbItems;
+  }
+
+  const entries = await fs.promises.readdir(classroomsDir);
+  const jsonFiles = entries.filter((f: string) => f.endsWith('.json'));
+  const dbIds = new Set(dbItems.map((c: ClassroomListItem) => c.id));
+
+  const localItems: ClassroomListItem[] = [];
+  for (const file of jsonFiles) {
+    const id = file.replace('.json', '');
+
+    try {
+      const content = await fs.promises.readFile(path.join(classroomsDir, file), 'utf-8');
+      const data = JSON.parse(content);
+
+      // Handle both formats
+      let name = '', description = '', sceneCount = 0, createdAt = '', updatedAt = '';
+      if (data.data && typeof data.data === 'object') {
+        // Format B: server format
+        name = data.name || '';
+        description = data.description || '';
+        sceneCount = data.data.scenes?.length || data.sceneCount || 0;
+        createdAt = data.data.stage?.createdAt || '';
+        updatedAt = data.data.stage?.updatedAt || '';
+      } else if (data.stage) {
+        // Format A: persistClassroom format
+        name = data.stage.name || '';
+        description = data.stage.description || '';
+        sceneCount = data.scenes?.length || 0;
+        createdAt = data.stage.createdAt || data.createdAt || '';
+        updatedAt = data.stage.updatedAt || '';
+      }
+
+      if (dbIds.has(id)) {
+        // Update DB item's sceneCount from local file if DB has 0
+        const dbItem = dbItems.find((c: ClassroomListItem) => c.id === id);
+        if (dbItem && sceneCount > 0 && dbItem.sceneCount === 0) {
+          dbItem.sceneCount = sceneCount;
+          dbItem.name = name || dbItem.name;
+        }
+        continue;
+      }
+
+      localItems.push({
+        id,
+        name: name || id,
+        description: description || 'AI 生成的交互式课堂',
+        sceneCount,
+        dataUrl: `classrooms/${id}/manifest.json`,
+        createdAt: createdAt ? new Date(createdAt).toISOString() : new Date().toISOString(),
+        updatedAt: updatedAt ? new Date(updatedAt).toISOString() : new Date().toISOString(),
+      });
+    } catch {
+      // Skip invalid files
+    }
+  }
+
+  console.log(`[listClassroomsFromServer] DB: ${dbItems.length}, Local-only: ${localItems.length}`);
+  return [...dbItems, ...localItems];
 }
 
 /**

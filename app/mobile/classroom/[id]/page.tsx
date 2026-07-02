@@ -1044,10 +1044,13 @@ function InteractiveRenderer({ scene }: InteractiveRendererProps) {
     return <FallbackInteractive scene={scene} />;
   }
 
+  // Patch HTML with CSP and error handler
+  const patchedHtml = patchInteractiveHtml(content.html);
+
   return (
     <div className="w-full h-full bg-white">
       <iframe
-        srcDoc={content.html}
+        srcDoc={patchedHtml}
         className="w-full h-full border-0"
         title={`Interactive Scene ${scene.id}`}
         sandbox="allow-scripts allow-forms allow-popups"
@@ -1057,68 +1060,23 @@ function InteractiveRenderer({ scene }: InteractiveRendererProps) {
   );
 }
 
-function extractContent(html: string): { styles: string; scripts: string; bodyContent: string } {
-  let styles = '';
-  let scripts = '';
-  
-  const styleRegex = /<style[^>]*>([\s\S]*?)<\/style>/gi;
-  let match;
-  while ((match = styleRegex.exec(html)) !== null) {
-    styles += match[1] + '\n';
-  }
-  
-  const scriptRegex = /<script[^>]*>([\s\S]*?)<\/script>/gi;
-  while ((match = scriptRegex.exec(html)) !== null) {
-    scripts += match[1] + '\n';
-  }
-  
-  const bodyStart = html.indexOf('<body');
-  if (bodyStart === -1) {
-    return { styles, scripts, bodyContent: html };
-  }
-  
-  const bodyOpenEnd = html.indexOf('>', bodyStart);
-  if (bodyOpenEnd === -1) {
-    return { styles, scripts, bodyContent: html };
-  }
-  
-  const bodyEnd = html.lastIndexOf('</body>');
-  if (bodyEnd === -1) {
-    return { styles, scripts, bodyContent: html.substring(bodyOpenEnd + 1) };
-  }
-  
-  return { styles, scripts, bodyContent: html.substring(bodyOpenEnd + 1, bodyEnd) };
-}
-
-function patchHtmlForIframe(html: string): string {
-  const iframeCss = `<style data-iframe-patch>
-  html, body {
-    width: 100%;
-    height: 100%;
-    margin: 0;
-    padding: 0;
-    overflow-x: hidden;
-    overflow-y: auto;
-  }
-  body { min-height: 100vh; }
+function patchInteractiveHtml(html: string): string {
+  const patch = `<meta http-equiv="Content-Security-Policy" content="font-src 'self' data: https: about:; style-src 'unsafe-inline' 'self' data:; script-src 'unsafe-inline' 'self' 'unsafe-eval' data:;">
+<script data-iframe-patch>
+window.onerror=function(m,u,l){console.warn('[Interactive]',m,'line',l);return true};
+window.onunhandledrejection=function(e){console.warn('[Interactive]',e.reason)};
+</script>
+<style>
+/* Fix about:invalid font references */
+@font-face { font-family: 'KaTeX_Main'; src: local('serif'); }
+@font-face { font-family: 'KaTeX_Math'; src: local('serif'); }
+@font-face { font-family: 'KaTeX_AMS'; src: local('serif'); }
 </style>`;
-
   const headIdx = html.indexOf('<head>');
   if (headIdx !== -1) {
-    const insertPos = headIdx + 6;
-    return html.substring(0, insertPos) + '\n' + iframeCss + html.substring(insertPos);
+    return html.substring(0, headIdx + 6) + '\n' + patch + html.substring(headIdx + 6);
   }
-
-  const headWithAttrs = html.indexOf('<head ');
-  if (headWithAttrs !== -1) {
-    const closeAngle = html.indexOf('>', headWithAttrs);
-    if (closeAngle !== -1) {
-      const insertPos = closeAngle + 1;
-      return html.substring(0, insertPos) + '\n' + iframeCss + html.substring(insertPos);
-    }
-  }
-
-  return iframeCss + html;
+  return patch + html;
 }
 
 // ==================== Laser Dot Indicator ====================
