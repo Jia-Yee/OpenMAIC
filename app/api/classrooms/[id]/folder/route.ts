@@ -100,6 +100,45 @@ export async function POST(
           : new TextDecoder().decode(manifestFile.content as ArrayBuffer);
         const manifestData = JSON.parse(manifestText);
         
+        // Pre-fill audioUrl from zip audio files for speech actions that only have audioId
+        // This is needed because processClassroomMedia only extracts audio that has audioUrl
+        const audioFiles = files.filter((f: any) => f.path.startsWith('audio/'));
+        if (audioFiles.length > 0) {
+          // Build a map of audioId -> data URL from zip files
+          const audioDataMap: Record<string, string> = {};
+          for (const audioFile of audioFiles) {
+            const filename = audioFile.path.replace('audio/', '');
+            const audioId = filename.replace(/\.[^.]+$/, '');
+            const ext = filename.split('.').pop()?.toLowerCase() || 'mp3';
+            let mimeType = 'audio/mpeg';
+            if (ext === 'wav') mimeType = 'audio/wav';
+            else if (ext === 'ogg') mimeType = 'audio/ogg';
+            
+            const buffer = audioFile.content instanceof ArrayBuffer
+              ? Buffer.from(audioFile.content)
+              : Buffer.isBuffer(audioFile.content)
+                ? audioFile.content
+                : Buffer.from(audioFile.content as string, 'binary');
+            const base64 = buffer.toString('base64');
+            audioDataMap[audioId] = `data:${mimeType};base64,${base64}`;
+          }
+          
+          // Fill audioUrl in speech actions
+          let filledCount = 0;
+          for (const scene of manifestData.scenes || []) {
+            for (const action of scene.actions || []) {
+              if (action.type === 'speech' && action.audioId && !action.audioUrl) {
+                const dataUrl = audioDataMap[action.audioId];
+                if (dataUrl) {
+                  action.audioUrl = dataUrl;
+                  filledCount++;
+                }
+              }
+            }
+          }
+          console.log(`[FolderUpload] Pre-filled ${filledCount} audioUrls from ${audioFiles.length} zip audio files`);
+        }
+        
         console.log(`[FolderUpload] Processing external media URLs in manifest`);
         
         // Process external media URLs

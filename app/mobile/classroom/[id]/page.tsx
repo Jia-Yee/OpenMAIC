@@ -44,6 +44,10 @@ export default function MobileClassroomPage() {
   const [validationError, setValidationError] = useState<string | null>(null);
   const [completed, setCompleted] = useState(false);
 
+  // Header auto-hide: hide when playing, show on tap
+  const [headerVisible, setHeaderVisible] = useState(true);
+  const headerTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   useEffect(() => {
     if (!validateClassroomId(classroomId)) {
       setValidationError('无效的课程ID');
@@ -218,6 +222,21 @@ export default function MobileClassroomPage() {
     }
   }, [playbackState, pause, play]);
 
+  // Auto-hide header when playback starts
+  useEffect(() => {
+    if (playbackState === 'playing') {
+      setHeaderVisible(false);
+    }
+  }, [playbackState]);
+
+  const handleContentTap = useCallback(() => {
+    if (playbackState === 'playing') {
+      setHeaderVisible(v => !v);
+      if (headerTimerRef.current) clearTimeout(headerTimerRef.current);
+      headerTimerRef.current = setTimeout(() => setHeaderVisible(false), 3000);
+    }
+  }, [playbackState]);
+
   // 监听用户交互以启用 TTS
   useEffect(() => {
     const enableTTS = () => {
@@ -325,9 +344,13 @@ export default function MobileClassroomPage() {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
-      {/* 顶部导航栏 */}
-      <header className="shrink-0 bg-white shadow-sm px-4 py-2 flex items-center justify-between z-10">
+    <div className="h-screen flex flex-col bg-gray-50 overflow-hidden relative">
+      {/* 顶部导航栏 - 播放时自动隐藏 */}
+      <header
+        className={`bg-white shadow-sm px-4 py-2 flex items-center justify-between z-20 transition-all duration-300 ${
+          headerVisible ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0 h-0 py-0 overflow-hidden'
+        }`}
+      >
         <button onClick={() => router.back()} className="p-2 hover:bg-gray-100 rounded-full">
           <ChevronLeftIcon size={24} />
         </button>
@@ -350,21 +373,13 @@ export default function MobileClassroomPage() {
         </div>
       </header>
 
-      {/* 场景类型和标题 */}
-      <div className="shrink-0 bg-white px-4 py-2 border-b">
-        <div className="flex items-center gap-2">
-          <span className="inline-block bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-xs font-medium">
-            {currentScene.type === 'slide' ? '幻灯片' :
-             currentScene.type === 'quiz' ? '测验' :
-             currentScene.type === 'interactive' ? '交互' : '其他'}
-          </span>
-          <span className="font-medium text-sm truncate">{currentScene.title || '无标题'}</span>
-        </div>
-      </div>
-
       {/* 主要内容区 - 幻灯片渲染 - 支持触摸滚动 */}
-      <main className="flex-1 overflow-y-auto overscroll-contain bg-gray-100" style={{ WebkitOverflowScrolling: 'touch' }}>
-        <div className="min-h-full flex items-center justify-center p-3 pb-16">
+      <main
+        className="flex-1 overflow-y-auto overscroll-contain bg-gray-100"
+        style={{ WebkitOverflowScrolling: 'touch' }}
+        onClick={handleContentTap}
+      >
+        <div className="min-h-full flex items-center justify-center p-2 pb-14">
           <div className="relative bg-white rounded-lg shadow-md overflow-hidden" style={{ width: '100%', minHeight: '100%' }}>
             {/* 幻灯片内容渲染 */}
             <SlideRenderer
@@ -402,7 +417,7 @@ export default function MobileClassroomPage() {
 
       {/* 悬浮播放进度条 */}
       {currentActions.length > 0 && (
-        <div className="absolute bottom-16 left-0 right-0 px-4 py-1 z-20 pointer-events-none">
+        <div className="absolute bottom-14 left-0 right-0 px-4 py-1 z-20 pointer-events-none">
           <div className="flex items-center gap-2 text-xs text-white drop-shadow-lg">
             <span>{currentActionIndex + 1} / {currentActions.length}</span>
             <div className="flex-1 h-1 bg-white/30 rounded-full overflow-hidden">
@@ -417,7 +432,7 @@ export default function MobileClassroomPage() {
 
       {/* AI 聊天面板（可折叠，浮动） */}
       {showChat && (
-        <div className="absolute bottom-16 left-0 right-0 border-t bg-white/95 backdrop-blur-sm max-h-48 overflow-y-auto z-30">
+        <div className="absolute bottom-14 left-0 right-0 border-t bg-white/95 backdrop-blur-sm max-h-48 overflow-y-auto z-30">
           <div className="p-4">
             <h3 className="font-bold mb-3 flex items-center gap-2">
               <MessageCircleIcon size={18} />

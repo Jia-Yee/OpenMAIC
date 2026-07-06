@@ -58,6 +58,28 @@ export class AudioPlayer {
           this._isPlaying = false;
           this.onEndedCallback?.();
         });
+
+        // Wait for audio to be playable or fail to load
+        try {
+          await new Promise<void>((resolve, reject) => {
+            const onCanPlay = () => { cleanup(); resolve(); };
+            const onError = () => { cleanup(); reject(new Error('Audio load failed')); };
+            const cleanup = () => {
+              this.audio?.removeEventListener('canplay', onCanPlay);
+              this.audio?.removeEventListener('error', onError);
+            };
+            this.audio!.addEventListener('canplay', onCanPlay);
+            this.audio!.addEventListener('error', onError);
+            // Timeout after 5s
+            setTimeout(() => { cleanup(); reject(new Error('Audio load timeout')); }, 5000);
+          });
+        } catch (loadError) {
+          log.warn('Audio URL failed to load, returning false for TTS fallback');
+          this._isPlaying = false;
+          this.stop();
+          return false;
+        }
+
         await this.audio.play();
         this.audio.playbackRate = this.playbackRate;
         return true;

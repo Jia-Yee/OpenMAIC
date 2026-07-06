@@ -183,7 +183,7 @@ export async function saveStageData(stageId: string, data: StageStoreData): Prom
 
     log.info(`Saved stage: ${stageId}`);
 
-    // Sync to server for cross-device access
+    // Sync to server: dev writes local file, production uploads to R2
     await syncStageToServer(stageId, data);
   } catch (error) {
     log.error('Failed to save stage:', error);

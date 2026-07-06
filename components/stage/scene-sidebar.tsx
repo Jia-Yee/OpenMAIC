@@ -149,7 +149,7 @@ export function SceneSidebar({
 
             return (
               <div
-                key={scene.id}
+                key={scene.id || `scene-${index}`}
                 data-testid="scene-item"
                 onClick={() => {
                   if (onSceneSelect) {

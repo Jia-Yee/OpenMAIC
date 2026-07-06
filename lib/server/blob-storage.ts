@@ -1,9 +1,13 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 
-const BLOB_STORE_ID = process.env.BLOB_STORE_ID || 'store_dEn2beTlBFsQ3VGR';
-
-// Dev mode: store data locally instead of R2/Vercel Blob
+// Storage strategy:
+//   Write: R2 only (called by course management upload)
+//   Read:  R2 first, dev falls back to local files
+//   Production: no local file access at all
+//
+//   Studio save → classroom-storage.ts (dev: local file, prod: R2)
+//   Course management upload → blob-storage.ts (R2 only)
 const isDev = !process.env.VERCEL && process.env.NODE_ENV !== 'production';
 const LOCAL_DATA_DIR = path.join(process.cwd(), 'data', 'classrooms');
 
@@ -12,28 +16,17 @@ async function ensureLocalDir(classroomId?: string) {
   await fs.mkdir(dir, { recursive: true });
 }
 
-// ==================== Remote Storage (R2 / Vercel Blob) ====================
+// ==================== Remote Storage Helpers ====================
 
 async function getBlobModule(): Promise<{ put: any; get: any; del: any; list: any } | null> {
   try {
     const blob = await import('@vercel/blob');
-    return {
-      put: blob.put,
-      get: blob.get,
-      del: blob.del,
-      list: blob.list,
-    };
-  } catch (e) {
+    return { put: blob.put, get: blob.get, del: blob.del, list: blob.list };
+  } catch {
     try {
       const blob = require('@vercel/blob');
-      return {
-        put: blob.put,
-        get: blob.get,
-        del: blob.del,
-        list: blob.list,
-      };
+      return { put: blob.put, get: blob.get, del: blob.del, list: blob.list };
     } catch {
-      console.warn('@vercel/blob not available, will use when deployed to Vercel');
       return null;
     }
   }
@@ -51,164 +44,165 @@ function isR2Available(): boolean {
 
 async function getR2Module(): Promise<any> {
   if (isR2Available()) {
-    const r2 = await import('./r2-storage');
-    return r2;
+    return await import('./r2-storage');
   }
   return null;
 }
 
-function dataUrlToBlob(dataUrl: string): Blob {
-  const parts = dataUrl.split(',');
-  const mimeMatch = parts[0].match(/:(.*?);/);
-  const mimeType = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
-  const base64Data = parts[1];
-  const byteString = atob(base64Data);
-  const arrayBuffer = new ArrayBuffer(byteString.length);
-  const uint8Array = new Uint8Array(arrayBuffer);
+// ==================== Local File Helpers (dev read-only) ====================
 
-  for (let i = 0; i < byteString.length; i++) {
-    uint8Array[i] = byteString.charCodeAt(i);
+async function readLocalJson(classroomId: string): Promise<any | null> {
+  try {
+    const filePath = path.join(LOCAL_DATA_DIR, `${classroomId}.json`);
+    const content = await fs.readFile(filePath, 'utf-8');
+    return JSON.parse(content);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      console.error('[LocalStorage] Error reading classroom data:', error);
+    }
   }
 
-  return new Blob([uint8Array], { type: mimeType });
+  try {
+    const manifestPath = path.join(LOCAL_DATA_DIR, classroomId, 'manifest.json');
+    const content = await fs.readFile(manifestPath, 'utf-8');
+    return JSON.parse(content);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      console.error('[LocalStorage] Error reading manifest:', error);
+    }
+  }
+
+  return null;
+}
+
+/** Normalize both Format A ({stage, scenes}) and Format B ({data: {stage, scenes}}) */
+function normalizeData(raw: any): any {
+  if (!raw) return null;
+  if (raw.data && typeof raw.data === 'object') {
+    const scenes = raw.data.scenes || [];
+    if (scenes.length > 0) return { stage: raw.data.stage, scenes, ...raw.data };
+    if (raw.scenes && raw.scenes.length > 0) return raw;
+    return { stage: raw.data.stage, scenes: [] };
+  }
+  return raw;
+}
+
+async function readLocalMedia(classroomId: string, mediaId: string): Promise<string | null> {
+  for (const subDir of ['media', 'audio']) {
+    try {
+      const dir = path.join(LOCAL_DATA_DIR, classroomId, subDir);
+      const entries = await fs.readdir(dir);
+      const match = entries.find(f => f.startsWith(mediaId + '.') || f === mediaId);
+      if (match) {
+        const buffer = await fs.readFile(path.join(dir, match));
+        const ext = path.extname(match).toLowerCase();
+        const mimeMap: Record<string, string> = {
+          '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+          '.webp': 'image/webp', '.mp3': 'audio/mpeg', '.wav': 'audio/wav',
+          '.mp4': 'video/mp4',
+        };
+        const mimeType = mimeMap[ext] || 'application/octet-stream';
+        return `data:${mimeType};base64,${buffer.toString('base64')}`;
+      }
+    } catch {}
+  }
+  return null;
+}
+
+async function listLocalMedia(classroomId: string): Promise<string[]> {
+  const results: string[] = [];
+  for (const subDir of ['media', 'audio']) {
+    try {
+      const dir = path.join(LOCAL_DATA_DIR, classroomId, subDir);
+      const entries = await fs.readdir(dir);
+      results.push(...entries.map(f => f.replace(/\.[^.]+$/, '')));
+    } catch {}
+  }
+  return results;
+}
+
+/** Write a single classroom JSON to local file (dev only, called from classroom-storage.ts) */
+export async function writeLocalClassroomJson(classroomId: string, data: any): Promise<void> {
+  if (!isDev) return;
+  await ensureLocalDir();
+  const filePath = path.join(LOCAL_DATA_DIR, `${classroomId}.json`);
+  await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8');
+  console.log(`[LocalStorage] Saved classroom data: ${classroomId}`);
 }
 
 // ==================== Public API ====================
+// Upload: R2 only (no local dual-write) — called by course management upload
+// Read:   R2 first, dev falls back to local, then Vercel Blob
 
 export async function uploadClassroomData(classroomId: string, data: any): Promise<string> {
-  // Dev: save to local file
-  if (isDev) {
-    await ensureLocalDir();
-    const filePath = path.join(LOCAL_DATA_DIR, `${classroomId}.json`);
-    await fs.writeFile(filePath, JSON.stringify(data), 'utf-8');
-    console.log(`[LocalStorage] Saved classroom data: ${classroomId}`);
-    return `local://${classroomId}`;
-  }
-
+  // 1. Upload to R2
   const r2Module = await getR2Module();
   if (r2Module) {
-    return await r2Module.uploadClassroomData(classroomId, data);
+    try {
+      const url = await r2Module.uploadClassroomData(classroomId, data);
+      console.log(`[R2] Uploaded classroom data: ${classroomId}`);
+      return url;
+    } catch (error) {
+      console.warn(`[R2] Upload failed:`, error);
+    }
   }
 
+  // 2. Fallback to Vercel Blob
   const blobModule = await getBlobModule();
   const token = process.env.BLOB_READ_WRITE_TOKEN;
-  
   if (blobModule && token) {
     const { url } = await blobModule.put(`classrooms/${classroomId}.json`, JSON.stringify(data), {
-      access: 'private',
-      token: token,
-      allowOverwrite: true,
+      access: 'private', token, allowOverwrite: true,
     });
     return url;
   }
 
-  throw new Error('Storage not available. Either R2 or Vercel Blob must be configured.');
-}
-
-/**
- * Normalize classroom data for getClassroomData:
- * Handles both Format A ({stage, scenes}) and Format B ({data: {stage, scenes}})
- */
-function normalizeBlobData(raw: any): any {
-  if (!raw) return null;
-
-  // Format B: server format with data.stage / data.scenes
-  if (raw.data && typeof raw.data === 'object') {
-    const scenes = raw.data.scenes || [];
-    if (scenes.length > 0) {
-      console.log(`[normalizeBlobData] Using server format, ${scenes.length} scenes`);
-      return { stage: raw.data.stage, scenes, ...raw.data };
-    }
-    // data.scenes is empty, check top-level
-    if (raw.scenes && raw.scenes.length > 0) {
-      return raw;
-    }
-    return { stage: raw.data.stage, scenes: [] };
-  }
-
-  // Format A: top-level stage/scenes
-  return raw;
+  throw new Error('Storage not available. R2 or Vercel Blob must be configured.');
 }
 
 export async function getClassroomData(classroomId: string): Promise<any | null> {
-  // Dev: read from local file — try {id}.json first, then folder/manifest.json
-  if (isDev) {
-    // Try standalone JSON file first
+  // 1. Try R2
+  const r2Module = await getR2Module();
+  if (r2Module) {
     try {
-      const filePath = path.join(LOCAL_DATA_DIR, `${classroomId}.json`);
-      const content = await fs.readFile(filePath, 'utf-8');
-      const raw = JSON.parse(content);
-      const data = normalizeBlobData(raw);
-      if (data && data.scenes && data.scenes.length > 0) {
+      const data = await r2Module.getClassroomData(classroomId);
+      if (data) {
+        const normalized = normalizeData(data);
+        if (normalized?.scenes?.length > 0) {
+          console.log(`[R2] Read classroom data: ${classroomId} (${normalized.scenes.length} scenes)`);
+          return normalized;
+        }
+      }
+    } catch (error) {
+      console.warn(`[R2] Read failed:`, error);
+    }
+  }
+
+  // 2. Dev fallback: try local files
+  if (isDev) {
+    const raw = await readLocalJson(classroomId);
+    if (raw) {
+      const data = normalizeData(raw);
+      if (data?.scenes?.length > 0) {
         console.log(`[LocalStorage] Read classroom data: ${classroomId} (${data.scenes.length} scenes)`);
         return data;
       }
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-        console.error('[LocalStorage] Error reading classroom data:', error);
-      }
-    }
-
-    // Try folder manifest.json (uploaded via folder upload API)
-    try {
-      const manifestPath = path.join(LOCAL_DATA_DIR, classroomId, 'manifest.json');
-      const manifestContent = await fs.readFile(manifestPath, 'utf-8');
-      const raw = JSON.parse(manifestContent);
-      const data = normalizeBlobData(raw);
-      if (data && data.scenes && data.scenes.length > 0) {
-        console.log(`[LocalStorage] Read classroom data from manifest: ${classroomId} (${data.scenes.length} scenes)`);
-        return data;
-      }
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-        console.error('[LocalStorage] Error reading manifest:', error);
-      }
-    }
-
-    // Last try: {id}.json even with empty scenes
-    try {
-      const filePath = path.join(LOCAL_DATA_DIR, `${classroomId}.json`);
-      const content = await fs.readFile(filePath, 'utf-8');
-      const raw = JSON.parse(content);
-      const data = normalizeBlobData(raw);
-      console.log(`[LocalStorage] Read classroom data (no scenes): ${classroomId}`);
-      return data;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        return null;
-      }
-      return null;
     }
   }
 
-  const r2Module = await getR2Module();
-  if (r2Module) {
-    return await r2Module.getClassroomData(classroomId);
-  }
-
+  // 3. Try Vercel Blob
   const token = process.env.BLOB_READ_WRITE_TOKEN;
   const storeId = process.env.BLOB_STORE_ID;
-  
   if (token && storeId) {
     try {
       const url = `https://${storeId.replace('store_', '')}.private.blob.vercel-storage.com/classrooms/${classroomId}.json`;
-      const response = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-      
+      const response = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
       if (response.ok) {
         const data = await response.json();
-        console.log('Fetched classroom data from Blob:', data ? Object.keys(data) : null);
-        return data;
-      } else {
-        console.log('Blob fetch failed:', response.status, response.statusText);
-        return null;
+        return normalizeData(data);
       }
     } catch (error) {
-      console.error('Error getting classroom data from Blob:', error);
-      return null;
+      console.error('[Blob] Read failed:', error);
     }
   }
 
@@ -216,146 +210,85 @@ export async function getClassroomData(classroomId: string): Promise<any | null>
 }
 
 export async function uploadMediaFile(classroomId: string, mediaId: string, dataUrlOrBlobUrl: string): Promise<string> {
-  // Dev: save media to local folder
-  if (isDev) {
-    await ensureLocalDir(classroomId);
-    const mediaDir = path.join(LOCAL_DATA_DIR, classroomId, 'media');
-    await fs.mkdir(mediaDir, { recursive: true });
-
-    let buffer: Buffer;
-    let ext = '.bin';
-
-    if (dataUrlOrBlobUrl.startsWith('data:')) {
-      const parts = dataUrlOrBlobUrl.split(',');
-      const mimeMatch = parts[0].match(/:(.*?);/);
-      const mimeType = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
-      const base64Data = parts[1];
-      buffer = Buffer.from(base64Data, 'base64');
-      // Guess extension from mime type
-      if (mimeType.startsWith('image/png')) ext = '.png';
-      else if (mimeType.startsWith('image/jpeg')) ext = '.jpg';
-      else if (mimeType.startsWith('image/webp')) ext = '.webp';
-      else if (mimeType.startsWith('audio/')) ext = '.mp3';
-    } else if (dataUrlOrBlobUrl.startsWith('http')) {
-      const response = await fetch(dataUrlOrBlobUrl);
-      if (!response.ok) throw new Error(`Failed to download media: ${response.status}`);
-      buffer = Buffer.from(await response.arrayBuffer());
-    } else {
-      throw new Error(`Unsupported media URL format: ${dataUrlOrBlobUrl.substring(0, 50)}...`);
-    }
-
-    const filePath = path.join(mediaDir, `${mediaId}${ext}`);
-    await fs.writeFile(filePath, buffer);
-    console.log(`[LocalStorage] Saved media: ${classroomId}/media/${mediaId}${ext}`);
-    return `local://${classroomId}/media/${mediaId}${ext}`;
-  }
-
+  // 1. Upload to R2
   const r2Module = await getR2Module();
   if (r2Module) {
-    return await r2Module.uploadMediaFile(classroomId, mediaId, dataUrlOrBlobUrl);
+    try {
+      const url = await r2Module.uploadMediaFile(classroomId, mediaId, dataUrlOrBlobUrl);
+      console.log(`[R2] Uploaded media: ${classroomId}/media/${mediaId}`);
+      return url;
+    } catch (error) {
+      console.warn(`[R2] Upload failed:`, error);
+    }
+  }
+
+  // 2. Fallback to Vercel Blob
+  let buffer: Buffer | null = null;
+  let mimeType = 'application/octet-stream';
+
+  if (dataUrlOrBlobUrl.startsWith('data:')) {
+    const parts = dataUrlOrBlobUrl.split(',');
+    const mimeMatch = parts[0].match(/:(.*?);/);
+    mimeType = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
+    buffer = Buffer.from(parts[1], 'base64');
+  } else if (dataUrlOrBlobUrl.startsWith('http')) {
+    const response = await fetch(dataUrlOrBlobUrl);
+    if (!response.ok) throw new Error(`Failed to download media: ${response.status}`);
+    buffer = Buffer.from(await response.arrayBuffer());
+    mimeType = response.headers.get('content-type') || mimeType;
+  } else {
+    throw new Error(`Unsupported media URL format: ${dataUrlOrBlobUrl.substring(0, 50)}...`);
   }
 
   const blobModule = await getBlobModule();
   const token = process.env.BLOB_READ_WRITE_TOKEN;
-  
   if (blobModule && token) {
-    let blob: Blob;
-    
-    if (dataUrlOrBlobUrl.startsWith('data:')) {
-      blob = dataUrlToBlob(dataUrlOrBlobUrl);
-    } else if (dataUrlOrBlobUrl.includes('.blob.vercel-storage.com') || dataUrlOrBlobUrl.includes('.vercel-storage.com')) {
-      console.log(`Downloading Vercel Blob media: ${mediaId}`);
-      const response = await fetch(dataUrlOrBlobUrl, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Failed to download Vercel Blob media: ${response.status}`);
-      }
-      
-      blob = await response.blob();
-    } else if (dataUrlOrBlobUrl.startsWith('http://') || dataUrlOrBlobUrl.startsWith('https://')) {
-      console.log(`Downloading external media: ${mediaId} from ${dataUrlOrBlobUrl.substring(0, 50)}...`);
-      const response = await fetch(dataUrlOrBlobUrl);
-      
-      if (!response.ok) {
-        throw new Error(`Failed to download external media: ${response.status}`);
-      }
-      
-      blob = await response.blob();
-    }
-    else {
-      throw new Error(`Unsupported media URL format: ${dataUrlOrBlobUrl.substring(0, 50)}...`);
-    }
-    
+    const blob = new Blob([buffer as any], { type: mimeType });
     const blobPath = `classrooms/${classroomId}/media/${mediaId}`;
     const { url } = await blobModule.put(blobPath, blob, {
-      access: 'private',
-      token: token,
-      allowOverwrite: true,
+      access: 'private', token, allowOverwrite: true,
     });
     return url;
   }
 
-  throw new Error('Storage not available. Either R2 or Vercel Blob must be configured.');
+  throw new Error('Storage not available. R2 or Vercel Blob must be configured.');
 }
 
 export async function getMediaFile(classroomId: string, mediaId: string): Promise<string | null> {
-  // Dev: read from local folder
-  if (isDev) {
-    try {
-      const mediaDir = path.join(LOCAL_DATA_DIR, classroomId, 'media');
-      const entries = await fs.readdir(mediaDir);
-      const match = entries.find(f => f.startsWith(mediaId + '.') || f === mediaId);
-      if (match) {
-        const filePath = path.join(mediaDir, match);
-        const buffer = await fs.readFile(filePath);
-        const ext = path.extname(match).toLowerCase();
-        let mimeType = 'application/octet-stream';
-        if (ext === '.png') mimeType = 'image/png';
-        else if (ext === '.jpg' || ext === '.jpeg') mimeType = 'image/jpeg';
-        else if (ext === '.webp') mimeType = 'image/webp';
-        else if (ext === '.mp3') mimeType = 'audio/mpeg';
-        else if (ext === '.mp4') mimeType = 'video/mp4';
-        const base64 = buffer.toString('base64');
-        return `data:${mimeType};base64,${base64}`;
-      }
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-        console.error('[LocalStorage] Error reading media:', error);
-      }
-    }
-    return null;
-  }
-
+  // 1. Try R2
   const r2Module = await getR2Module();
   if (r2Module) {
-    return await r2Module.getMediaFile(classroomId, mediaId);
+    try {
+      const result = await r2Module.getMediaFile(classroomId, mediaId);
+      if (result) return result;
+    } catch (error) {
+      console.warn(`[R2] Get media failed:`, error);
+    }
   }
 
+  // 2. Dev fallback: try local files
+  if (isDev) {
+    const result = await readLocalMedia(classroomId, mediaId);
+    if (result) return result;
+  }
+
+  // 3. Try Vercel Blob
   const token = process.env.BLOB_READ_WRITE_TOKEN;
   const storeId = process.env.BLOB_STORE_ID;
-  
   if (token && storeId) {
-    const url = `https://${storeId.replace('store_', '')}.private.blob.vercel-storage.com/classrooms/${classroomId}/media/${mediaId}`;
-    const response = await fetch(url, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-      },
-    });
-    
-    if (response.ok) {
-      const blob = await response.blob();
-      const reader = new FileReader();
-      return new Promise((resolve) => {
-        reader.onloadend = () => resolve(reader.result as string);
-        reader.readAsDataURL(blob);
-      });
-    } else {
-      console.log('Media fetch failed:', response.status, response.statusText);
-      return null;
+    try {
+      const url = `https://${storeId.replace('store_', '')}.private.blob.vercel-storage.com/classrooms/${classroomId}/media/${mediaId}`;
+      const response = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+      if (response.ok) {
+        const blob = await response.blob();
+        return await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.readAsDataURL(blob);
+        });
+      }
+    } catch (error) {
+      console.error('[Blob] Get media failed:', error);
     }
   }
 
@@ -363,130 +296,113 @@ export async function getMediaFile(classroomId: string, mediaId: string): Promis
 }
 
 export async function listClassroomMedia(classroomId: string): Promise<string[]> {
-  // Dev: list local media folder
-  if (isDev) {
+  // 1. Try R2
+  const r2Module = await getR2Module();
+  if (r2Module) {
     try {
-      const mediaDir = path.join(LOCAL_DATA_DIR, classroomId, 'media');
-      const entries = await fs.readdir(mediaDir);
-      return entries.map(f => f.replace(/\.[^.]+$/, '')); // Return without extension
-    } catch {
-      return [];
+      const results = await r2Module.listClassroomMedia(classroomId);
+      if (results.length > 0) return results;
+    } catch (error) {
+      console.warn(`[R2] List media failed:`, error);
     }
   }
 
-  const r2Module = await getR2Module();
-  if (r2Module) {
-    return await r2Module.listClassroomMedia(classroomId);
+  // 2. Dev fallback: list local files
+  if (isDev) {
+    const results = await listLocalMedia(classroomId);
+    if (results.length > 0) return results;
   }
 
+  // 3. Try Vercel Blob
   const blobModule = await getBlobModule();
   const token = process.env.BLOB_READ_WRITE_TOKEN;
-  
   if (blobModule && token) {
-    const { blobs } = await blobModule.list({
-      prefix: `classrooms/${classroomId}/media/`,
-      token: token,
-    });
-    return blobs
-      .filter((blob: any) => blob && blob.path)
-      .map((blob: any) => blob.path.replace(`classrooms/${classroomId}/media/`, ''));
+    try {
+      const { blobs } = await blobModule.list({ prefix: `classrooms/${classroomId}/media/`, token });
+      return blobs
+        .filter((blob: any) => blob && blob.path)
+        .map((blob: any) => blob.path.replace(`classrooms/${classroomId}/media/`, ''));
+    } catch {}
   }
 
   return [];
 }
 
 export async function deleteClassroomData(classroomId: string): Promise<void> {
-  // Dev: delete local folder
-  if (isDev) {
-    try {
-      const dir = path.join(LOCAL_DATA_DIR, classroomId);
-      await fs.rm(dir, { recursive: true, force: true });
-      const jsonFile = path.join(LOCAL_DATA_DIR, `${classroomId}.json`);
-      await fs.unlink(jsonFile).catch(() => {});
-      console.log(`[LocalStorage] Deleted classroom: ${classroomId}`);
-    } catch (error) {
-      console.error('[LocalStorage] Error deleting classroom:', error);
-    }
-    return;
-  }
-
+  // 1. Delete from R2
   const r2Module = await getR2Module();
   if (r2Module) {
-    return await r2Module.deleteClassroomData(classroomId);
+    await r2Module.deleteClassroomData(classroomId);
   }
 
+  // 2. Dev: also delete local
+  if (isDev) {
+    try {
+      await fs.rm(path.join(LOCAL_DATA_DIR, classroomId), { recursive: true, force: true });
+      await fs.unlink(path.join(LOCAL_DATA_DIR, `${classroomId}.json`)).catch(() => {});
+      console.log(`[LocalStorage] Deleted classroom: ${classroomId}`);
+    } catch (error) {
+      console.error('[LocalStorage] Delete failed:', error);
+    }
+  }
+
+  // 3. Also try Vercel Blob
   const blobModule = await getBlobModule();
   const token = process.env.BLOB_READ_WRITE_TOKEN;
-  
   if (blobModule && token) {
-    await blobModule.del(`classrooms/${classroomId}.json`, {
-      token: token,
-    });
-    
+    await blobModule.del(`classrooms/${classroomId}.json`, { token });
     const mediaFiles = await listClassroomMedia(classroomId);
     for (const mediaId of mediaFiles) {
-      await blobModule.del(`classrooms/${classroomId}/media/${mediaId}`, {
-        token: token,
-      });
+      await blobModule.del(`classrooms/${classroomId}/media/${mediaId}`, { token });
     }
   }
 }
 
 export async function deleteClassroomFiles(classroomId: string, filePaths: string[]): Promise<void> {
-  // Dev: delete local files
-  if (isDev) {
-    for (const filePath of filePaths) {
-      try {
-        await fs.unlink(path.join(LOCAL_DATA_DIR, classroomId, filePath));
-      } catch {}
-    }
-    return;
-  }
-
+  // 1. Delete from R2
   const r2Module = await getR2Module();
   if (r2Module) {
-    return await r2Module.deleteClassroomFiles(classroomId, filePaths);
+    await r2Module.deleteClassroomFiles(classroomId, filePaths);
   }
 
+  // 2. Dev: also delete local
+  if (isDev) {
+    for (const filePath of filePaths) {
+      try { await fs.unlink(path.join(LOCAL_DATA_DIR, classroomId, filePath)); } catch {}
+    }
+  }
+
+  // 3. Also try Vercel Blob
   const blobModule = await getBlobModule();
   const token = process.env.BLOB_READ_WRITE_TOKEN;
-  
   if (blobModule && token) {
     for (const filePath of filePaths) {
-      await blobModule.del(`classrooms/${classroomId}/${filePath}`, {
-        token: token,
-      });
+      await blobModule.del(`classrooms/${classroomId}/${filePath}`, { token });
     }
   }
 }
 
 export async function listClassroomFiles(): Promise<string[]> {
-  // Dev: list local classroom JSON files
-  if (isDev) {
-    try {
-      await ensureLocalDir();
-      const entries = await fs.readdir(LOCAL_DATA_DIR);
-      return entries
-        .filter(f => f.endsWith('.json'))
-        .map(f => f.replace('.json', ''));
-    } catch {
-      return [];
-    }
-  }
-
+  // 1. Try R2
   const r2Module = await getR2Module();
   if (r2Module) {
     return await r2Module.listClassroomFiles();
   }
 
+  // 2. Dev fallback
+  if (isDev) {
+    try {
+      await ensureLocalDir();
+      const entries = await fs.readdir(LOCAL_DATA_DIR);
+      return entries.filter(f => f.endsWith('.json')).map(f => f.replace('.json', ''));
+    } catch {}
+  }
+
+  // 3. Try Vercel Blob
   const blobModule = await getBlobModule();
   const token = process.env.BLOB_READ_WRITE_TOKEN;
-  
   if (blobModule && token) {
-    const { blobs } = await blobModule.list({ 
-      prefix: 'classrooms/',
-      token: token,
-    });
+    const { blobs } = await blobModule.list({ prefix: 'classrooms/', token });
     return blobs
       .filter((blob: any) => blob.path.endsWith('.json'))
       .map((blob: any) => blob.path.replace('classrooms/', '').replace('.json', ''));
@@ -505,162 +421,102 @@ export async function uploadClassroomFolder(
   classroomId: string,
   files: ClassroomFileEntry[]
 ): Promise<string[]> {
-  // Dev: save all files locally
-  if (isDev) {
-    await ensureLocalDir(classroomId);
-    const uploadedUrls: string[] = [];
-
-    for (const file of files) {
-      const filePath = path.join(LOCAL_DATA_DIR, classroomId, file.path);
-      const dir = path.dirname(filePath);
-      await fs.mkdir(dir, { recursive: true });
-
-      if (file.content instanceof ArrayBuffer || Buffer.isBuffer(file.content)) {
-        await fs.writeFile(filePath, Buffer.from(file.content as ArrayBuffer));
-      } else if (typeof file.content === 'string') {
-        await fs.writeFile(filePath, file.content, 'utf-8');
-      } else {
-        console.warn(`[LocalStorage] Skipping file with no content: ${file.path}`);
-        continue;
-      }
-
-      uploadedUrls.push(`local://${classroomId}/${file.path}`);
+  // 1. Upload to R2
+  const r2Module = await getR2Module();
+  if (r2Module) {
+    try {
+      const urls = await r2Module.uploadClassroomFolder(classroomId, files);
+      console.log(`[R2] Uploaded ${urls.length} files for classroom: ${classroomId}`);
+      return urls;
+    } catch (error) {
+      console.warn(`[R2] Upload folder failed:`, error);
     }
+  }
 
-    console.log(`[LocalStorage] Saved ${uploadedUrls.length} files for classroom: ${classroomId}`);
+  // 2. Fallback to Vercel Blob
+  const blobModule = await getBlobModule();
+  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  if (blobModule && token) {
+    const uploadedUrls: string[] = [];
+    for (const file of files) {
+      const blobPath = `classrooms/${classroomId}/${file.path}`;
+      let body: string | Blob;
+      if (file.content instanceof ArrayBuffer) {
+        body = new Blob([file.content], { type: file.mimeType });
+      } else if (typeof file.content === 'string' && file.content.length > 0) {
+        body = file.content;
+      } else {
+        throw new Error(`File ${file.path} has no content`);
+      }
+      const { url } = await blobModule.put(blobPath, body, {
+        access: 'private', token, allowOverwrite: true,
+      });
+      uploadedUrls.push(url);
+    }
     return uploadedUrls;
   }
 
-  const r2Module = await getR2Module();
-  if (r2Module) {
-    return await r2Module.uploadClassroomFolder(classroomId, files);
-  }
-
-  const blobModule = await getBlobModule();
-  const token = process.env.BLOB_READ_WRITE_TOKEN;
-  
-  if (!blobModule || !token) {
-    throw new Error('Storage not available. Either R2 or Vercel Blob must be configured.');
-  }
-
-  const uploadedUrls: string[] = [];
-  
-  for (const file of files) {
-    const blobPath = `classrooms/${classroomId}/${file.path}`;
-    
-    let body: string | Blob;
-    
-    if (file.content instanceof ArrayBuffer) {
-      body = new Blob([file.content], { type: file.mimeType });
-    } else if (typeof file.content === 'string' && file.content.length > 0) {
-      body = file.content;
-    } else {
-      console.error(`[BlobStorage] File has no content: ${file.path}`, {
-        hasContent: 'content' in file,
-        contentType: typeof file.content,
-        keys: Object.keys(file),
-      });
-      throw new Error(`File ${file.path} has no content`);
-    }
-    
-    const { url } = await blobModule.put(blobPath, body, {
-      access: 'private',
-      token: token,
-      allowOverwrite: true,
-      addRandomSuffix: false,
-    }).catch((putError: any) => {
-      if (putError?.message?.includes('suspended')) {
-        throw new Error(`Vercel Blob storage is suspended. Please check your Vercel dashboard (https://vercel.com/dashboard/storage) to resume the Blob storage service. Error: ${putError.message}`);
-      }
-      throw putError;
-    });
-    
-    uploadedUrls.push(url);
-    console.log(`[BlobStorage] Uploaded file: ${blobPath}`);
-  }
-  
-  console.log(`[BlobStorage] Uploaded ${uploadedUrls.length} files for classroom: ${classroomId}`);
-  return uploadedUrls;
+  throw new Error('Storage not available. R2 or Vercel Blob must be configured.');
 }
 
 export async function getClassroomFile(
   classroomId: string,
   filePath: string
 ): Promise<{ blob: Blob; mimeType: string } | null> {
-  // Dev: read from local folder
+  // 1. Try R2
+  const r2Module = await getR2Module();
+  if (r2Module) {
+    try {
+      return await r2Module.getClassroomFile(classroomId, filePath);
+    } catch (error) {
+      console.warn(`[R2] Get file failed:`, error);
+    }
+  }
+
+  // 2. Dev fallback: read local
   if (isDev) {
     try {
       const fullPath = path.join(LOCAL_DATA_DIR, classroomId, filePath);
       const buffer = await fs.readFile(fullPath);
       const ext = path.extname(filePath).toLowerCase();
-      let mimeType = 'application/octet-stream';
-      if (ext === '.json') mimeType = 'application/json';
-      else if (ext === '.png') mimeType = 'image/png';
-      else if (ext === '.jpg' || ext === '.jpeg') mimeType = 'image/jpeg';
-      else if (ext === '.mp3') mimeType = 'audio/mpeg';
+      const mimeMap: Record<string, string> = {
+        '.json': 'application/json', '.png': 'image/png',
+        '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.mp3': 'audio/mpeg',
+      };
+      const mimeType = mimeMap[ext] || 'application/octet-stream';
       return { blob: new Blob([buffer], { type: mimeType }), mimeType };
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-        console.error('[LocalStorage] Error reading file:', error);
-      }
-      return null;
-    }
+    } catch {}
   }
 
-  const r2Module = await getR2Module();
-  if (r2Module) {
-    return await r2Module.getClassroomFile(classroomId, filePath);
-  }
-
+  // 3. Try Vercel Blob
   const blobModule = await getBlobModule();
   const token = process.env.BLOB_READ_WRITE_TOKEN;
-  
-  if (!blobModule || !token) {
-    console.log(`[BlobStorage] Cannot get file: blobModule=${!!blobModule}, token=${!!token}`);
-    return null;
+  if (blobModule && token) {
+    try {
+      const result = await blobModule.get(`classrooms/${classroomId}/${filePath}`, {
+        access: 'private', token,
+      });
+      if (result && result.statusCode === 200 && result.stream) {
+        const mimeType = result.blob?.contentType || 'application/octet-stream';
+        const blob = await new Response(result.stream).blob();
+        return { blob, mimeType };
+      }
+    } catch (error) {
+      console.error('[Blob] Get file failed:', error);
+    }
   }
 
-  const blobPath = `classrooms/${classroomId}/${filePath}`;
-
-  try {
-    const result = await blobModule.get(blobPath, {
-      access: 'private',
-      token: token,
-    });
-    
-    if (!result) {
-      console.log(`[BlobStorage] File not found: ${blobPath}`);
-      return null;
-    }
-    
-    if (result.statusCode !== 200) {
-      console.log(`[BlobStorage] File fetch failed: ${blobPath}, status: ${result.statusCode}`);
-      return null;
-    }
-    
-    const stream = result.stream;
-    if (!stream) {
-      console.log(`[BlobStorage] No stream in response: ${blobPath}`);
-      return null;
-    }
-    
-    const mimeType = result.blob?.contentType || 'application/octet-stream';
-    const size = result.blob?.size;
-    
-    console.log(`[BlobStorage] Fetching stream: ${blobPath}, mime: ${mimeType}, size: ${size}`);
-    
-    const blob = await new Response(stream).blob();
-    
-    console.log(`[BlobStorage] Successfully fetched: ${blobPath}, size: ${blob.size}`);
-    return { blob, mimeType };
-  } catch (error) {
-    console.error(`[BlobStorage] Error getting file ${filePath}:`, error);
-    return null;
-  }
+  return null;
 }
 
 export async function listClassroomFolder(classroomId: string): Promise<string[]> {
-  // Dev: list local folder
+  // 1. Try R2
+  const r2Module = await getR2Module();
+  if (r2Module) {
+    return await r2Module.listClassroomFolder(classroomId);
+  }
+
+  // 2. Dev fallback: list local
   if (isDev) {
     try {
       const dir = path.join(LOCAL_DATA_DIR, classroomId);
@@ -678,29 +534,18 @@ export async function listClassroomFolder(classroomId: string): Promise<string[]
         return files;
       };
       return await listDir(dir);
-    } catch {
-      return [];
-    }
+    } catch {}
   }
 
-  const r2Module = await getR2Module();
-  if (r2Module) {
-    return await r2Module.listClassroomFolder(classroomId);
-  }
-
+  // 3. Try Vercel Blob
   const blobModule = await getBlobModule();
   const token = process.env.BLOB_READ_WRITE_TOKEN;
-  
-  if (!blobModule || !token) {
-    return [];
+  if (blobModule && token) {
+    const { blobs } = await blobModule.list({ prefix: `classrooms/${classroomId}/`, token });
+    return blobs
+      .filter((blob: any) => blob && blob.path)
+      .map((blob: any) => blob.path.replace(`classrooms/${classroomId}/`, ''));
   }
 
-  const { blobs } = await blobModule.list({
-    prefix: `classrooms/${classroomId}/`,
-    token: token,
-  });
-  
-  return blobs
-    .filter((blob: any) => blob && blob.path)
-    .map((blob: any) => blob.path.replace(`classrooms/${classroomId}/`, ''));
+  return [];
 }

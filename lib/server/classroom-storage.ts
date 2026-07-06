@@ -2,42 +2,29 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import type { NextRequest } from 'next/server';
 import type { Scene, Stage } from '@/lib/types/stage';
+import { uploadClassroomData } from '@/lib/server/blob-storage';
 
 export const CLASSROOMS_DIR = path.join(process.cwd(), 'data', 'classrooms');
 export const CLASSROOM_JOBS_DIR = path.join(process.cwd(), 'data', 'classroom-jobs');
 
-const isServerless = process.env.VERCEL || process.env.NODE_ENV === 'production';
+const isDev = !process.env.VERCEL && process.env.NODE_ENV !== 'production';
 
 async function ensureDir(dir: string) {
-  if (isServerless) {
-    console.log('[ClassroomStorage] Skipping mkdir in serverless environment');
-    return;
-  }
+  if (!isDev) return;
   await fs.mkdir(dir, { recursive: true });
 }
 
 export async function ensureClassroomsDir() {
-  if (isServerless) {
-    console.log('[ClassroomStorage] Skipping ensureClassroomsDir in serverless environment');
-    return;
-  }
   await ensureDir(CLASSROOMS_DIR);
 }
 
 export async function ensureClassroomJobsDir() {
-  if (isServerless) {
-    console.log('[ClassroomStorage] Skipping ensureClassroomJobsDir in serverless environment');
-    return;
-  }
   await ensureDir(CLASSROOM_JOBS_DIR);
 }
 
 export async function writeJsonFileAtomic(filePath: string, data: unknown) {
-  if (isServerless) {
-    console.log('[ClassroomStorage] Skipping writeJsonFileAtomic in serverless environment');
-    return;
-  }
-  
+  if (!isDev) return;
+
   const dir = path.dirname(filePath);
   await ensureDir(dir);
 
@@ -72,7 +59,6 @@ export function isValidClassroomId(id: string): boolean {
 function normalizeClassroomData(raw: any, id: string): PersistedClassroomData | null {
   if (!raw) return null;
 
-  // Format A: top-level stage and scenes
   if (raw.stage && raw.scenes) {
     return {
       id: raw.id || id,
@@ -82,7 +68,6 @@ function normalizeClassroomData(raw: any, id: string): PersistedClassroomData | 
     };
   }
 
-  // Format B: nested in data.stage / data.scenes
   if (raw.data && raw.data.stage && raw.data.scenes) {
     return {
       id: raw.id || id,
@@ -92,7 +77,6 @@ function normalizeClassroomData(raw: any, id: string): PersistedClassroomData | 
     };
   }
 
-  // Partial data: has stage but no scenes (or empty scenes)
   if (raw.stage) {
     return {
       id: raw.id || id,
@@ -102,7 +86,6 @@ function normalizeClassroomData(raw: any, id: string): PersistedClassroomData | 
     };
   }
 
-  // Format B partial: has data.stage but data.scenes is missing/empty
   if (raw.data && raw.data.stage) {
     return {
       id: raw.id || id,
@@ -115,14 +98,20 @@ function normalizeClassroomData(raw: any, id: string): PersistedClassroomData | 
   return null;
 }
 
+/**
+ * Read classroom from local file system (dev only)
+ * Production should read from PostgreSQL + R2 via /api/classroom
+ */
 export async function readClassroom(id: string): Promise<PersistedClassroomData | null> {
+  if (!isDev) return null;
+
   const filePath = path.join(CLASSROOMS_DIR, `${id}.json`);
   try {
     const content = await fs.readFile(filePath, 'utf-8');
     const raw = JSON.parse(content);
     const result = normalizeClassroomData(raw, id);
     if (result) {
-      console.log(`[readClassroom] ${id}: ${result.scenes?.length || 0} scenes, format=${raw.data ? 'server' : 'persist'}`);
+      console.log(`[readClassroom] ${id}: ${result.scenes?.length || 0} scenes`);
     }
     return result;
   } catch (error) {
@@ -133,6 +122,11 @@ export async function readClassroom(id: string): Promise<PersistedClassroomData 
   }
 }
 
+/**
+ * Persist classroom data.
+ * Dev: write to local file only
+ * Production: upload to R2 only
+ */
 export async function persistClassroom(
   data: {
     id: string;
@@ -148,9 +142,19 @@ export async function persistClassroom(
     createdAt: new Date().toISOString(),
   };
 
-  await ensureClassroomsDir();
-  const filePath = path.join(CLASSROOMS_DIR, `${data.id}.json`);
-  await writeJsonFileAtomic(filePath, classroomData);
+  if (isDev) {
+    // Dev: write to local file only
+    await ensureClassroomsDir();
+    const filePath = path.join(CLASSROOMS_DIR, `${data.id}.json`);
+    await writeJsonFileAtomic(filePath, classroomData);
+  } else {
+    // Production: upload to R2
+    try {
+      await uploadClassroomData(data.id, classroomData);
+    } catch (error) {
+      console.error('[persistClassroom] R2 upload failed:', error);
+    }
+  }
 
   return {
     ...classroomData,

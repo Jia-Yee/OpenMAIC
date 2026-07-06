@@ -36,20 +36,16 @@ export default function ClassroomDetailPage() {
     try {
       await loadFromStorage(classroomId);
 
-      // If IndexedDB had no data, try server-side storage (API-generated classrooms)
-      if (!useStageStore.getState().stage) {
-        log.info('No IndexedDB data, trying server-side storage for:', classroomId);
-        try {
-          const res = await fetch(`/api/classroom?id=${encodeURIComponent(classroomId)}`);
-          if (res.ok) {
-            const json = await res.json();
-            if (json.success && json.classroom) {
-              const classroomData = json.classroom;
-              const { stage, scenes } = classroomData.data || classroomData;
-              if (!stage) {
-                log.warn('No stage data found in classroom');
-                return;
-              }
+      // Always try server-side storage to get latest data
+      // Server data takes precedence and overwrites IndexedDB cache
+      try {
+        const res = await fetch(`/api/classroom?id=${encodeURIComponent(classroomId)}`);
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && json.classroom) {
+            const classroomData = json.classroom;
+            const { stage, scenes } = classroomData.data || classroomData;
+            if (stage) {
               useStageStore.getState().setStage(stage);
               useStageStore.setState({
                 scenes: scenes || [],
@@ -58,8 +54,6 @@ export default function ClassroomDetailPage() {
               log.info('Loaded from server-side storage:', classroomId);
 
               // Hydrate server-generated agents into IndexedDB + registry.
-              // Don't set selectedAgentIds here — the general agent
-              // restoration logic below (Path 2) handles it uniformly.
               if (stage.generatedAgentConfigs?.length) {
                 const { saveGeneratedAgents } = await import('@/lib/orchestration/registry/store');
                 await saveGeneratedAgents(stage.id, stage.generatedAgentConfigs);
@@ -67,9 +61,9 @@ export default function ClassroomDetailPage() {
               }
             }
           }
-        } catch (fetchErr) {
-          log.warn('Server-side storage fetch failed:', fetchErr);
         }
+      } catch (fetchErr) {
+        log.warn('Server-side storage fetch failed:', fetchErr);
       }
 
       // Restore completed media generation tasks from IndexedDB

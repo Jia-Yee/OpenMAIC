@@ -177,9 +177,10 @@ export function useMobilePlayback({
               advanceToNext();
             }
           });
-        } else if (!disableTTS) {
-          // No pre-generated audio, fall back to TTS
-          console.log('[MobilePlayback] No pre-generated audio, using TTS');
+        } else {
+          // No pre-generated audio or audio failed, fall back to TTS
+          // Always try TTS fallback when audio is unavailable, regardless of disableTTS
+          console.log('[MobilePlayback] No pre-generated audio, using TTS fallback');
           
           try {
             await CapacitorTTS.speak({
@@ -207,17 +208,6 @@ export function useMobilePlayback({
               advanceToNext();
             }
           }
-        } else {
-          // TTS is disabled and no pre-generated audio, skip directly to next action
-          console.log('[MobilePlayback] TTS disabled and no pre-generated audio, skipping speech');
-          setTimeout(() => {
-            if (isMountedRef.current && !shouldStopRef.current) {
-              setLectureText(null);
-              setIsSpeaking(false);
-              onSpeechEnd?.();
-              advanceToNext();
-            }
-          }, 100);
         }
         break;
       }

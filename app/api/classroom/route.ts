@@ -1,4 +1,4 @@
-import { type NextRequest, NextResponse } from 'next/server';
+import { type NextRequest } from 'next/server';
 import { randomUUID } from 'crypto';
 import { apiSuccess, apiError, API_ERROR_CODES } from '@/lib/server/api-response';
 import {
@@ -15,6 +15,9 @@ import { eq } from 'drizzle-orm';
 import { createLogger } from '@/lib/logger';
 
 const log = createLogger('Classroom API');
+
+// Production (Vercel) has no local filesystem, skip local reads
+const isDev = !process.env.VERCEL && process.env.NODE_ENV !== 'production';
 
 export async function POST(request: NextRequest) {
   let stageId: string | undefined;
@@ -53,31 +56,6 @@ export async function POST(request: NextRequest) {
   }
 }
 
-/**
- * Restore media files as data URLs for a classroom
- */
-async function restoreMediaForClassroom(id: string, classroom: any): Promise<any> {
-  const mediaData: Record<string, string> = {};
-  const mediaFiles = await listClassroomMedia(id);
-  log.info(`Found ${mediaFiles.length} media files for classroom ${id}`);
-
-  for (const mediaFile of mediaFiles) {
-    if (!mediaFile) continue;
-    const mediaId = mediaFile.replace(/\.[^.]+$/, '');
-    const dataUrl = await getMediaFile(id, mediaId);
-    if (dataUrl) {
-      mediaData[mediaId] = dataUrl;
-    }
-  }
-
-  if (Object.keys(mediaData).length > 0) {
-    const restoredData = restoreMediaDataUrls(classroom, mediaData);
-    classroom.scenes = restoredData.scenes;
-  }
-
-  return classroom;
-}
-
 export async function GET(request: NextRequest) {
   try {
     const id = request.nextUrl.searchParams.get('id');
@@ -94,92 +72,81 @@ export async function GET(request: NextRequest) {
       return apiError(API_ERROR_CODES.INVALID_REQUEST, 400, 'Invalid classroom id');
     }
 
-    // Step 1: Try reading from local filesystem (handles both format A and B)
-    let classroom = await readClassroom(id);
-    log.info(`readClassroom(${id}): ${classroom ? `${classroom.scenes?.length || 0} scenes` : 'not found'}`);
+    let classroom = null;
 
-    // Step 2: If local file has scenes, restore media and return
-    if (classroom && classroom.scenes && classroom.scenes.length > 0) {
-      classroom = await restoreMediaForClassroom(id, classroom);
-      return apiSuccess({ classroom });
+    // Dev only: try reading from local filesystem first
+    if (isDev) {
+      classroom = await readClassroom(id);
+      if (classroom && classroom.scenes && classroom.scenes.length > 0) {
+        // Restore media files from local/R2
+        const mediaData: Record<string, string> = {};
+        const mediaFiles = await listClassroomMedia(id);
+        for (const mediaFile of mediaFiles) {
+          if (!mediaFile) continue;
+          const mediaId = mediaFile.replace(/\.[^.]+$/, '');
+          const dataUrl = await getMediaFile(id, mediaId);
+          if (dataUrl) mediaData[mediaId] = dataUrl;
+        }
+        if (Object.keys(mediaData).length > 0) {
+          const restoredData = restoreMediaDataUrls(classroom, mediaData);
+          classroom.scenes = restoredData.scenes;
+        }
+        return apiSuccess({ classroom });
+      }
     }
 
-    // Step 3: Fallback to PostgreSQL + Blob for production
-    if (!classroom || !classroom.scenes || classroom.scenes.length === 0) {
-      if (!classroom) {
-        log.info(`Classroom not found in local storage, trying PostgreSQL + Blob: ${id}`);
-      } else {
-        log.info(`Classroom found in local storage but has no scenes, trying PostgreSQL + Blob: ${id}`);
+    // Primary path: PostgreSQL + R2 (both dev and production)
+    const pgDb = await ensureDb();
+    const results = await pgDb.select()
+      .from(classrooms)
+      .where(eq(classrooms.id, id))
+      .limit(1);
+
+    if (results.length > 0) {
+      const serverClassroom = results[0];
+
+      // Get full data from R2/Blob
+      const data = (serverClassroom.dataUrl ? await getClassroomData(id) : null) || {} as any;
+
+      if (!data.stage) data.stage = {};
+      if (!data.scenes) data.scenes = [];
+
+      // Restore media files
+      if (serverClassroom.dataUrl) {
+        const mediaData: Record<string, string> = {};
+        const mediaFiles = await listClassroomMedia(id);
+        for (const mediaFile of mediaFiles) {
+          if (!mediaFile) continue;
+          const mediaId = mediaFile.replace(/\.[^.]+$/, '');
+          const dataUrl = await getMediaFile(id, mediaId);
+          if (dataUrl) mediaData[mediaId] = dataUrl;
+        }
+        if (Object.keys(mediaData).length > 0 && data.stage && data.scenes) {
+          const restoredData = restoreMediaDataUrls(data, mediaData);
+          data.stage = restoredData.stage;
+          data.scenes = restoredData.scenes;
+        }
       }
 
-      const pgDb = await ensureDb();
+      // Build stage object from PostgreSQL metadata + R2 data
+      const stage = {
+        id: serverClassroom.id,
+        name: serverClassroom.name,
+        description: serverClassroom.description,
+        createdAt: (serverClassroom.createdAt || 0) * 1000,
+        updatedAt: (serverClassroom.updatedAt || 0) * 1000,
+        languageDirective: data.languageDirective,
+        style: data.style,
+        currentSceneId: data.currentSceneId,
+        agentIds: data.agentIds,
+      };
 
-      const results = await pgDb.select()
-        .from(classrooms)
-        .where(eq(classrooms.id, id))
-        .limit(1);
-
-      log.info(`PostgreSQL query result: ${results.length} records found`);
-
-      if (results.length > 0) {
-        const serverClassroom = results[0];
-        log.info(`Found classroom in PostgreSQL: ${serverClassroom.name}, dataUrl: ${serverClassroom.dataUrl ? 'exists' : 'empty'}`);
-
-        // Get full data from Blob
-        const data = (serverClassroom.dataUrl ? await getClassroomData(id) : null) || {} as any;
-        log.info(`Blob data: ${data ? 'exists' : 'null'}, has stage: ${!!data.stage}, has scenes: ${!!data.scenes}`);
-
-        if (!data.stage || !data.scenes) {
-          log.warn(`Blob data is incomplete for classroom ${id}: stage=${!!data.stage}, scenes=${!!data.scenes}`);
-          data.stage = data.stage || {};
-          data.scenes = data.scenes || [];
-        }
-
-        // Download media files and restore as data URLs
-        if (serverClassroom.dataUrl) {
-          const mediaData: Record<string, string> = {};
-          const mediaFiles = await listClassroomMedia(id);
-          log.info(`Found ${mediaFiles.length} media files for classroom ${id}`);
-
-          for (const mediaFile of mediaFiles) {
-            if (!mediaFile) continue;
-            const mediaId = mediaFile.replace(/\.[^.]+$/, '');
-            const dataUrl = await getMediaFile(id, mediaId);
-            if (dataUrl) {
-              mediaData[mediaId] = dataUrl;
-            }
-          }
-
-          if (Object.keys(mediaData).length > 0 && data.stage && data.scenes) {
-            const restoredData = restoreMediaDataUrls(data, mediaData);
-            data.stage = restoredData.stage;
-            data.scenes = restoredData.scenes;
-          }
-        }
-
-        // Build stage object
-        const stage = {
-          id: serverClassroom.id,
-          name: serverClassroom.name,
-          description: serverClassroom.description,
-          createdAt: (serverClassroom.createdAt || 0) * 1000,
-          updatedAt: (serverClassroom.updatedAt || 0) * 1000,
-          languageDirective: data.languageDirective,
-          style: data.style,
-          currentSceneId: data.currentSceneId,
-          agentIds: data.agentIds,
-        };
-
-        const scenes = data.scenes || [];
-        log.info(`Classroom loaded from PostgreSQL + Blob: ${id}, ${scenes.length} scenes`);
-
-        classroom = {
-          id,
-          stage,
-          scenes,
-          createdAt: new Date().toISOString(),
-        };
-      }
+      classroom = {
+        id,
+        stage,
+        scenes: data.scenes || [],
+        createdAt: new Date().toISOString(),
+      };
     }
 
     if (!classroom) {

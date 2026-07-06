@@ -1,0 +1,424 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700;900&family=ZCOOL+KuaiLe&display=swap');
+
+@page {
+  size: A4 portrait;
+  margin: 0;
+}
+
+/* 屏幕背景 - 灰色底衬，通过poster-page的margin区域可见 */
+
+.poster-page {
+  width: 210mm;
+  height: 297mm;
+  background: linear-gradient(160deg, #252050 0%, #352a70 25%, #4a3898 50%, #352a70 75%, #252050 100%);
+  color: white;
+  position: relative;
+  overflow: hidden;
+  padding: 16mm 18mm 14mm;
+  display: flex;
+  flex-direction: column;
+  margin: 20px auto;
+  font-family: 'Noto Sans SC', sans-serif;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+}
+
+/* 背景装饰 */
+.bg-decor {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.circle {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(60px);
+  opacity: 0.25;
+}
+
+.c1 {
+  width: 300px;
+  height: 300px;
+  background: #7c3aed;
+  top: -80px;
+  right: -60px;
+}
+
+.c2 {
+  width: 200px;
+  height: 200px;
+  background: #06b6d4;
+  bottom: 100px;
+  left: -40px;
+}
+
+.c3 {
+  width: 250px;
+  height: 250px;
+  background: #ec4899;
+  bottom: -60px;
+  right: 40px;
+  opacity: 0.15;
+}
+
+.star {
+  position: absolute;
+  font-size: 20px;
+  opacity: 0.4;
+  animation: twinkle 3s ease-in-out infinite;
+}
+
+.s1 { top: 8%; right: 10%; font-size: 28px; color: #fbbf24; animation-delay: 0s; }
+.s2 { top: 30%; left: 8%; font-size: 18px; color: #a78bfa; animation-delay: 1s; }
+.s3 { top: 55%; right: 15%; font-size: 22px; color: #67e8f9; animation-delay: 0.5s; }
+.s4 { top: 75%; left: 12%; font-size: 16px; color: #f9a8d4; animation-delay: 1.5s; }
+.s5 { top: 90%; right: 25%; font-size: 24px; color: #fbbf24; animation-delay: 2s; }
+
+@keyframes twinkle {
+  0%, 100% { opacity: 0.3; transform: scale(1); }
+  50% { opacity: 0.8; transform: scale(1.3); }
+}
+
+/* 内容层 */
+.poster-header,
+.hero-section,
+.learning-tree,
+.poster-footer {
+  position: relative;
+  z-index: 1;
+}
+
+/* 顶部：品牌 + 二维码 */
+.poster-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand-icon {
+  font-size: 36px;
+  filter: drop-shadow(0 4px 12px rgba(124, 58, 237, 0.5));
+}
+
+.brand-name {
+  font-family: 'ZCOOL KuaiLe', 'Noto Sans SC', sans-serif;
+  font-size: 28px;
+  letter-spacing: 6px;
+  background: linear-gradient(135deg, #c4b5fd, #a78bfa, #818cf8, #67e8f9);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  filter: drop-shadow(0 2px 8px rgba(139, 92, 246, 0.4));
+  margin: 0;
+}
+
+.brand-tagline {
+  font-size: 11px;
+  color: rgba(196, 181, 253, 0.8);
+  letter-spacing: 4px;
+  margin: 0;
+}
+
+/* 顶部二维码 */
+.header-qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.qr-box {
+  width: 130px;
+  height: 130px;
+  background: white;
+  border-radius: 12px;
+  padding: 6px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3), 0 0 30px rgba(251, 191, 36, 0.15);
+}
+
+.qr-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 6px;
+}
+
+.qr-label {
+  font-size: 12px;
+  color: #fbbf24;
+  font-weight: 700;
+  letter-spacing: 1px;
+  margin: 0;
+}
+
+/* 主标语 */
+.hero-section {
+  text-align: center;
+  padding: 6px 0 2px;
+  flex-shrink: 0;
+}
+
+.hero-title {
+  font-family: 'ZCOOL KuaiLe', 'Noto Sans SC', sans-serif;
+  font-size: 44px;
+  line-height: 1.25;
+  letter-spacing: 4px;
+  text-shadow: 0 4px 20px rgba(139, 92, 246, 0.4);
+  margin: 0;
+}
+
+.highlight {
+  background: linear-gradient(135deg, #fbbf24, #f59e0b, #fbbf24);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  filter: drop-shadow(0 2px 12px rgba(251, 191, 36, 0.5));
+}
+
+.hero-subtitle {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.6);
+  letter-spacing: 3px;
+  margin-top: 4px;
+  margin-bottom: 0;
+}
+
+/* 学习树 */
+.learning-tree {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 10px 14px 8px;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.section-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #ddd6fe;
+  margin-bottom: 10px;
+  letter-spacing: 3px;
+  flex-shrink: 0;
+}
+
+.tree-container {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0 0 4px;
+  flex: 1;
+  justify-content: space-around;
+}
+
+/* 树干（中央竖线）- 从顶部金色到底部绿色 */
+.trunk {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 20px;
+  width: 3px;
+  background: linear-gradient(to bottom, #fbbf24, #7c3aed, #06b6d4, #22c55e);
+  transform: translateX(-50%);
+  border-radius: 2px;
+  opacity: 0.4;
+}
+
+/* 分支 */
+.tree-branch {
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+
+.tree-branch.left {
+  flex-direction: row;
+  padding-right: 52%;
+}
+
+.tree-branch.right {
+  flex-direction: row-reverse;
+  padding-left: 52%;
+}
+
+/* 连接线 */
+.branch-line {
+  position: absolute;
+  top: 50%;
+  height: 2px;
+  width: 20px;
+  opacity: 0.35;
+}
+
+.tree-branch.left .branch-line {
+  right: 0;
+  background: linear-gradient(to right, transparent, rgba(124, 58, 237, 0.6));
+}
+
+.tree-branch.right .branch-line {
+  left: 0;
+  background: linear-gradient(to left, transparent, rgba(6, 182, 212, 0.6));
+}
+
+/* 节点 */
+.branch-node {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  white-space: nowrap;
+  backdrop-filter: blur(4px);
+}
+
+.tree-branch.left .branch-node {
+  margin-left: auto;
+}
+
+.tree-branch.right .branch-node {
+  margin-right: auto;
+}
+
+/* 顶部节点 - 高级金色 */
+.tree-branch.top .branch-node {
+  border-color: rgba(251, 191, 36, 0.25);
+  background: rgba(251, 191, 36, 0.08);
+}
+
+/* 底部节点 - 新生绿色 */
+.tree-branch.bottom .branch-node.crown {
+  border-color: rgba(34, 197, 94, 0.25);
+  background: rgba(34, 197, 94, 0.08);
+}
+
+/* 年级颜色 */
+.node-grade {
+  font-size: 14px;
+  font-weight: 700;
+  padding: 2px 12px;
+  border-radius: 8px;
+  white-space: nowrap;
+  letter-spacing: 0.5px;
+}
+
+.grade6 { background: linear-gradient(135deg, #d97706, #b45309); color: #fef3c7; }
+.grade5 { background: linear-gradient(135deg, #7c3aed, #6d28d9); }
+.grade4 { background: linear-gradient(135deg, #2563eb, #1d4ed8); }
+.grade3 { background: linear-gradient(135deg, #0891b2, #0e7490); }
+.grade2 { background: linear-gradient(135deg, #059669, #047857); }
+.grade1 { background: linear-gradient(135deg, #16a34a, #15803d); }
+
+.node-topics {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.8);
+  letter-spacing: 0.3px;
+}
+
+/* 树根/底座 */
+.tree-root {
+  text-align: center;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+  margin-top: 2px;
+  letter-spacing: 2px;
+  flex-shrink: 0;
+}
+
+/* 底部 */
+.poster-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+}
+
+.cta-badges {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.badge {
+  font-size: 11px;
+  padding: 4px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.7);
+  font-weight: 500;
+  letter-spacing: 1px;
+}
+
+.badge.hot {
+  background: rgba(251, 191, 36, 0.18);
+  border-color: rgba(251, 191, 36, 0.35);
+  color: #fbbf24;
+  font-weight: 700;
+}
+
+.footer-tip {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.35);
+  letter-spacing: 2px;
+  margin: 0;
+}
+
+/* 打印按钮 */
+.print-btn {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #7c3aed, #6d28d9);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-size: 16px;
+  font-family: 'Noto Sans SC', sans-serif;
+  cursor: pointer;
+  box-shadow: 0 4px 20px rgba(124, 58, 237, 0.5);
+  z-index: 100;
+  transition: transform 0.2s;
+}
+
+.print-btn:hover {
+  transform: scale(1.05);
+}
+
+/* 打印样式 - 强制打印所有背景色 */
+@media print {
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .print-btn {
+    display: none !important;
+  }
+
+  .poster-page {
+    margin: 0;
+    box-shadow: none;
+  }
+
+  .star {
+    animation: none !important;
+    opacity: 0.5;
+  }
+}
