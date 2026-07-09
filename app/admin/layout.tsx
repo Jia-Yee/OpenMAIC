@@ -8,6 +8,7 @@ const navItems = [
   { label: '课堂管理', href: '/admin/classrooms', icon: '🎓' },
   { label: 'Studio', href: '/admin/studio', icon: '🎬' },
   { label: '用户管理', href: '/admin/users', icon: '👥' },
+  { label: '科目管理', href: '/admin/subjects', icon: '📖' },
   { label: '课程管理', href: '/admin/courses', icon: '📚' },
 ];
 

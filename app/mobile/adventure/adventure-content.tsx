@@ -214,11 +214,18 @@ export default function AdventureContent() {
       const textbooksData = await textbooksRes.json();
       const textbooks = textbooksData.textbooks || [];
       
-      if (textbooks.length > 0) {
-        const gradesRes = await fetch(`/api/grades?textbookId=${textbooks[0].id}`);
+      // Load grades from all textbooks (e.g. programming has C++ and Python)
+      const allGrades: Grade[] = [];
+      for (const textbook of textbooks) {
+        const gradesRes = await fetch(`/api/grades?textbookId=${textbook.id}`);
         const gradesData = await gradesRes.json();
-        setGrades(gradesData.grades || []);
+        const gradesList = (gradesData.grades || []).map((g: any) => ({
+          ...g,
+          textbookId: g.textbookId || textbook.id,
+        }));
+        allGrades.push(...gradesList);
       }
+      setGrades(allGrades);
     } catch (err) {
       console.error('Load grades error:', err);
     }
@@ -226,6 +233,9 @@ export default function AdventureContent() {
 
   const handleSubjectChange = (subject: Subject) => {
     loadGradesForSubject(subject.id);
+    // Update URL to reflect selected subject so currentSubject stays in sync
+    const newUrl = `/mobile/adventure?subjectId=${subject.id}&subjectName=${encodeURIComponent(subject.name)}${gradeId ? `&gradeId=${gradeId}` : ''}`;
+    router.replace(newUrl);
   };
 
   const handleGradeSelect = (subject: Subject, grade: Grade) => {
@@ -359,12 +369,20 @@ export default function AdventureContent() {
       }
       
       console.log('Step 2: Fetching grades...');
-      const gradesRes = await fetch(`/api/grades?textbookId=${textbooks[0].id}`);
-      if (!gradesRes.ok) {
-        throw new Error(`Grades API failed: ${gradesRes.status}`);
+      // Load grades from all textbooks (e.g. programming has C++ and Python)
+      let allGrades: any[] = [];
+      for (const textbook of textbooks) {
+        const gRes = await fetch(`/api/grades?textbookId=${textbook.id}`);
+        if (gRes.ok) {
+          const gData = await gRes.json();
+          const gList = (gData.grades || []).map((g: any) => ({
+            ...g,
+            textbookId: g.textbookId || textbook.id,
+          }));
+          allGrades.push(...gList);
+        }
       }
-      const gradesData = await gradesRes.json();
-      const grades = gradesData.grades || [];
+      const grades = allGrades;
       console.log('Grades found:', grades.length);
       
       if (grades.length === 0) {
@@ -1084,20 +1102,74 @@ export default function AdventureContent() {
             {/* Grades */}
             <div>
               <h3 className="text-sm font-medium text-gray-600 mb-2">年级</h3>
-              <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto">
-                {grades.map((grade) => (
-                  <button
-                    key={grade.id}
-                    onClick={() => currentSubject && handleGradeSelect(currentSubject, grade)}
-                    className={`py-3 px-4 rounded-lg text-sm font-medium text-left transition ${
-                      gradeInfo?.id === grade.id
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
-                  >
-                    {grade.name}
-                  </button>
-                ))}
+              <div className="max-h-64 overflow-y-auto">
+                {/* For programming subject, group by textbook (C++ / Python) */}
+                {currentSubject?.code === 'programming' ? (
+                  (() => {
+                    const cppGrades = grades.filter(g => g.textbookId === 'textbook-cpp-noip');
+                    const pyGrades = grades.filter(g => g.textbookId === 'textbook-python-basic');
+                    return (
+                      <>
+                        {cppGrades.length > 0 && (
+                          <div className="mb-3">
+                            <div className="text-xs font-semibold text-blue-600 mb-1.5">C++</div>
+                            <div className="grid grid-cols-2 gap-2">
+                              {cppGrades.map((grade) => (
+                                <button
+                                  key={grade.id}
+                                  onClick={() => currentSubject && handleGradeSelect(currentSubject, grade)}
+                                  className={`py-2.5 px-3 rounded-lg text-sm font-medium text-left transition ${
+                                    gradeInfo?.id === grade.id
+                                      ? 'bg-blue-600 text-white'
+                                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                  }`}
+                                >
+                                  {grade.name.replace('C++ GESP ', 'GESP ').replace('Python GESP ', 'GESP ')}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {pyGrades.length > 0 && (
+                          <div className="mb-1">
+                            <div className="text-xs font-semibold text-green-600 mb-1.5">Python</div>
+                            <div className="grid grid-cols-2 gap-2">
+                              {pyGrades.map((grade) => (
+                                <button
+                                  key={grade.id}
+                                  onClick={() => currentSubject && handleGradeSelect(currentSubject, grade)}
+                                  className={`py-2.5 px-3 rounded-lg text-sm font-medium text-left transition ${
+                                    gradeInfo?.id === grade.id
+                                      ? 'bg-blue-600 text-white'
+                                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                  }`}
+                                >
+                                  {grade.name.replace('C++ GESP ', 'GESP ').replace('Python GESP ', 'GESP ')}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()
+                ) : (
+                  <div className="grid grid-cols-2 gap-2">
+                    {grades.map((grade) => (
+                      <button
+                        key={grade.id}
+                        onClick={() => currentSubject && handleGradeSelect(currentSubject, grade)}
+                        className={`py-3 px-4 rounded-lg text-sm font-medium text-left transition ${
+                          gradeInfo?.id === grade.id
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                      >
+                        {grade.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
