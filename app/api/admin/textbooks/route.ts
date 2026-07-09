@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
       gradeCountMap[g.textbookId] = (gradeCountMap[g.textbookId] || 0) + 1;
     }
 
-    const finalResult = result.map(t => ({
+    const finalResult = result.map((t: any) => ({
       ...t,
       gradeCount: gradeCountMap[t.id] || 0,
     }));

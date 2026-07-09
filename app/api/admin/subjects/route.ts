@@ -28,7 +28,7 @@ export async function GET() {
       textbookCountMap[t.subjectId] = (textbookCountMap[t.subjectId] || 0) + 1;
     }
 
-    const result = allSubjects.map(s => ({
+    const result = allSubjects.map((s: any) => ({
       ...s,
       textbookCount: textbookCountMap[s.id] || 0,
     }));
