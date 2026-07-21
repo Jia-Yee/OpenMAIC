@@ -73,3 +73,7 @@ next-env.d.ts
 /docs
 tests/generation/*.eval.result.md
 .trae/*
+
+# git submodules
+public/math/.git
+public/math/node_modules
