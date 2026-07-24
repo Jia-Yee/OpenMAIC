@@ -74,12 +74,12 @@ function setSecurityHeaders(response: NextResponse, request: NextRequest): void 
   // Content-Security-Policy
   const cspDirectives: string[] = [
     `default-src 'self'`,
-    `script-src 'self' 'unsafe-inline' 'unsafe-eval'${isProduction && !isDev ? ' https://*.vercel-insights.com https://*.googletagmanager.com https://static.cloudflareinsights.com' : ''} https://cdn.jsdelivr.net data:`,
+    `script-src 'self' 'unsafe-inline' 'unsafe-eval'${isProduction && !isDev ? ' https://*.vercel-insights.com https://*.googletagmanager.com https://www.google-analytics.com https://static.cloudflareinsights.com' : ''} https://cdn.jsdelivr.net data:`,
     `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com https://cdn.jsdelivr.net data:`,
     `font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net data:`,
     `img-src 'self' data: blob: https://*.vercel-storage.com https://*.blob.core.windows.net https://*.r2.cloudflarestorage.com http://open.maic.chat https://open.maic.chat http://www.viete.xyz https://www.viete.xyz http://viete.xyz https://viete.xyz`,
     `media-src 'self' data: blob: https://*.vercel-storage.com https://*.r2.cloudflarestorage.com http://open.maic.chat https://open.maic.chat http://www.viete.xyz https://www.viete.xyz http://viete.xyz https://viete.xyz`,
-    `connect-src 'self'${isProduction && !isDev ? ' https://api.openai.com https://api.minimax.chat' : ''} https://*.vercel-storage.com https://*.r2.cloudflarestorage.com https://blob.vercel-storage.com ws://localhost:* wss://localhost:*`,
+    `connect-src 'self'${isProduction && !isDev ? ' https://api.openai.com https://api.minimax.chat https://www.google-analytics.com https://www.google.com' : ''} https://*.vercel-storage.com https://*.r2.cloudflarestorage.com https://blob.vercel-storage.com ws://localhost:* wss://localhost:*`,
     `frame-src 'self' https://*.youtube.com https://*.google.com`,
     `object-src 'none'`,
     `base-uri 'self'`,
